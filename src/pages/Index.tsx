@@ -119,7 +119,7 @@ const Index = () => {
 
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-7 gap-3 w-full max-w-4xl motion-safe:animate-in motion-safe:fade-in motion-safe:duration-700 motion-safe:delay-500">
             <FeatureCard icon={<Zap className="w-4 h-4 text-nostr" />} label="Nostr" description="NIP-50 search" active />
-            <FeatureCard icon={<Globe className="w-4 h-4 text-clearnet" />} label="Web" description="SearXNG" active />
+            <FeatureCard icon={<Globe className="w-4 h-4 text-clearnet" />} label="Web" description="DDG + SearXNG" active />
             <FeatureCard icon={<BookOpen className="w-4 h-4 text-foreground/70" />} label="Wiki" description="Wikipedia" active />
             <FeatureCard icon={<Newspaper className="w-4 h-4 text-foreground/70" />} label="News" description="Hacker News" active />
             <FeatureCard icon={<Shield className="w-4 h-4 text-tor" />} label="Tor" description="Ahmia" active />

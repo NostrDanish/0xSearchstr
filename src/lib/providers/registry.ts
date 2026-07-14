@@ -9,6 +9,7 @@
 import type { SearchProvider, SearchSource } from './types';
 import { nostrProvider } from './nostr';
 import { searxngProvider } from './searxng';
+import { duckduckgoProvider } from './duckduckgo';
 import { torProvider } from './tor';
 import { wikipediaProvider } from './wikipedia';
 import { hackerNewsProvider } from './hacker-news';
@@ -17,6 +18,7 @@ import { hackerNewsProvider } from './hacker-news';
 export const ALL_PROVIDERS: SearchProvider[] = [
   nostrProvider,
   searxngProvider,
+  duckduckgoProvider,
   wikipediaProvider,
   hackerNewsProvider,
   torProvider,

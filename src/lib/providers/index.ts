@@ -11,6 +11,7 @@ export type {
 
 export { nostrProvider } from './nostr';
 export { searxngProvider } from './searxng';
+export { duckduckgoProvider } from './duckduckgo';
 export { torProvider } from './tor';
 export { wikipediaProvider } from './wikipedia';
 export { hackerNewsProvider } from './hacker-news';

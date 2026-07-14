@@ -2,21 +2,34 @@
  * SearXNG meta-search provider — queries public SearXNG instances with failover.
  *
  * Aggregates web results from DuckDuckGo, Brave, Wikipedia, and dozens
- * of other engines. Automatic failover across a pool of public instances.
+ * of other engines. Races multiple instances in parallel for speed,
+ * with sequential failover if needed.
  */
 import type { SearchProvider, SearchOptions, ProviderSearchResponse, SearchResult } from './types';
 
 const CORS_PROXY = 'https://proxy.shakespeare.diy/?url=';
 
-/** Public SearXNG instances with JSON API support. */
+/**
+ * Public SearXNG instances with JSON API support.
+ * Sourced from searx.space and manually verified.
+ * Order matters: first batch is raced in parallel.
+ */
 const INSTANCES = [
+  // Batch 1 — raced in parallel
   'https://search.ononoki.org',
-  'https://searx.tiekoetter.com',
-  'https://search.bus-hit.me',
-  'https://searxng.site',
-  'https://search.sapti.me',
+  'https://baresearch.org',
   'https://etsi.me',
+  'https://searxng.site',
+  // Batch 2 — sequential fallback
+  'https://search.bus-hit.me',
+  'https://searx.tiekoetter.com',
+  'https://search.sapti.me',
+  'https://ooglester.com',
+  'https://copp.gg',
 ];
+
+/** How many instances to race in the first parallel batch. */
+const PARALLEL_BATCH = 4;
 
 interface RawSearXNGResult {
   title: string;
@@ -53,7 +66,7 @@ function toSearchResult(r: RawSearXNGResult, index: number): SearchResult {
     engine: r.engine || undefined,
     thumbnail: r.thumbnail || undefined,
     timestamp: r.publishedDate ? Math.floor(new Date(r.publishedDate).getTime() / 1000) || undefined : undefined,
-    score: 80 - index * 0.5, // Web results scored slightly below Nostr
+    score: 80 - index * 0.5,
   };
 }
 
@@ -97,8 +110,18 @@ export const searxngProvider: SearchProvider = {
   async search({ query, signal }: SearchOptions): Promise<ProviderSearchResponse> {
     if (!query.trim()) return { results: [] };
 
-    for (const instance of INSTANCES) {
-      const data = await queryInstance(instance, query.trim(), signal);
+    const q = query.trim();
+
+    // Phase 1: Race the first batch of instances in parallel.
+    // First one to return good results wins.
+    const parallelBatch = INSTANCES.slice(0, PARALLEL_BATCH);
+    const raceResult = await raceForResults(parallelBatch, q, signal);
+    if (raceResult) return raceResult;
+
+    // Phase 2: Sequential fallback through remaining instances.
+    const fallbackBatch = INSTANCES.slice(PARALLEL_BATCH);
+    for (const instance of fallbackBatch) {
+      const data = await queryInstance(instance, q, signal);
       if (data && data.results.length > 0) {
         return {
           results: data.results.map(toSearchResult),
@@ -110,3 +133,46 @@ export const searxngProvider: SearchProvider = {
     return { results: [], suggestions: [] };
   },
 };
+
+/**
+ * Race multiple SearXNG instances in parallel.
+ * Returns the first response with results, or null if all fail.
+ */
+async function raceForResults(
+  instances: string[],
+  query: string,
+  signal?: AbortSignal,
+): Promise<ProviderSearchResponse | null> {
+  return new Promise((resolve) => {
+    let resolved = false;
+    let remaining = instances.length;
+
+    for (const instance of instances) {
+      queryInstance(instance, query, signal).then((data) => {
+        if (resolved) return;
+        remaining--;
+
+        if (data && data.results.length > 0) {
+          resolved = true;
+          resolve({
+            results: data.results.map(toSearchResult),
+            suggestions: data.suggestions ?? [],
+          });
+          return;
+        }
+
+        // If this was the last one and none succeeded, resolve null.
+        if (remaining === 0 && !resolved) {
+          resolved = true;
+          resolve(null);
+        }
+      }).catch(() => {
+        remaining--;
+        if (remaining === 0 && !resolved) {
+          resolved = true;
+          resolve(null);
+        }
+      });
+    }
+  });
+}
