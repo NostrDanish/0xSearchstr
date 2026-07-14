@@ -1,9 +1,10 @@
 import { Link, useLocation } from 'react-router-dom';
-import { Search, Shield, Sun, Moon, Info } from 'lucide-react';
+import { Search, Shield, Sun, Moon, Info, Terminal } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { LoginArea } from '@/components/auth/LoginArea';
 import { useTheme } from '@/hooks/useTheme';
 import { cn } from '@/lib/utils';
+import type { Theme } from '@/contexts/AppContext';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -11,12 +12,22 @@ interface LayoutProps {
   minimal?: boolean;
 }
 
+/** Cycle order for the theme toggle button. */
+const THEME_CYCLE: Theme[] = ['light', 'dark', 'hacker'];
+
+function nextTheme(current: Theme): Theme {
+  const idx = THEME_CYCLE.indexOf(current);
+  return THEME_CYCLE[(idx + 1) % THEME_CYCLE.length];
+}
+
 export function Layout({ children, minimal = false }: LayoutProps) {
   const { theme, setTheme } = useTheme();
   const location = useLocation();
 
   const isHome = location.pathname === '/';
-  const isDark = theme === 'dark' || (theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+  const resolvedTheme = theme === 'system'
+    ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
+    : theme;
 
   return (
     <div className="min-h-screen flex flex-col bg-background">
@@ -62,10 +73,12 @@ export function Layout({ children, minimal = false }: LayoutProps) {
               variant="ghost"
               size="icon"
               className="h-8 w-8 text-muted-foreground hover:text-foreground"
-              onClick={() => setTheme(isDark ? 'light' : 'dark')}
-              aria-label="Toggle theme"
+              onClick={() => setTheme(nextTheme(resolvedTheme))}
+              aria-label={`Theme: ${resolvedTheme}. Click to switch.`}
             >
-              {isDark ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+              {resolvedTheme === 'light' && <Sun className="w-4 h-4" />}
+              {resolvedTheme === 'dark' && <Moon className="w-4 h-4" />}
+              {resolvedTheme === 'hacker' && <Terminal className="w-4 h-4" />}
             </Button>
 
             <LoginArea className="max-w-48" />
