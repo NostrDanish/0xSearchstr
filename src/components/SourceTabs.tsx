@@ -1,7 +1,7 @@
 import { cn } from '@/lib/utils';
-import { Layers, Zap, Globe } from 'lucide-react';
+import { Layers, Zap, Globe, Shield, Network } from 'lucide-react';
 
-export type SearchSource = 'all' | 'nostr' | 'web';
+export type SearchSource = 'all' | 'nostr' | 'web' | 'tor' | 'i2p';
 
 interface SourceTabsProps {
   value: SearchSource;
@@ -32,6 +32,20 @@ const sources: { id: SearchSource; label: string; icon: React.ReactNode; color: 
     icon: <Globe className="w-3.5 h-3.5" />,
     color: 'text-clearnet/70 hover:text-clearnet',
     activeColor: 'text-clearnet bg-clearnet/10 border-clearnet/30',
+  },
+  {
+    id: 'tor',
+    label: 'Tor',
+    icon: <Shield className="w-3.5 h-3.5" />,
+    color: 'text-tor/70 hover:text-tor',
+    activeColor: 'text-tor bg-tor/10 border-tor/30',
+  },
+  {
+    id: 'i2p',
+    label: 'I2P',
+    icon: <Network className="w-3.5 h-3.5" />,
+    color: 'text-i2p/70 hover:text-i2p',
+    activeColor: 'text-i2p bg-i2p/10 border-i2p/30',
   },
 ];
 

@@ -35,6 +35,14 @@ Results     (instance pool with failover)
                │
           Merge + Show
                │
+          Also search Tor?
+          │            │
+         Yes          No
+          │            │
+          ▼            ▼
+      Query Ahmia   Done
+      (.onion search)
+               │
           Still nothing?
                │
                ▼
@@ -71,6 +79,8 @@ Open `http://localhost:8080` and search.
 |-------|--------|-----|
 | **Nostr** | NIP-50 relays | Direct WebSocket queries to search-capable relays. Profiles, notes, articles, files. |
 | **Web** | SearXNG instances | Meta-search across DDG, Brave, Wikipedia, and dozens more. Pool of public instances with automatic failover. |
+| **Tor** | Ahmia.fi | Policy-compliant .onion search engine. Results show warning interstitials before opening. Fallback links to Torch and Haystak. |
+| **I2P** | Eepsite directories | Directory links to Identiguy, notbob.i2p, stats.i2p. No public I2P search API exists yet. |
 | **Fallback** | Browser links | Direct links to DDG, Brave Search, Presearch, Mojeek, Marginalia. |
 
 ### Nostr-First Strategy
