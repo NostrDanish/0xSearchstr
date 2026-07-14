@@ -1,5 +1,8 @@
 import { useSeoMeta } from '@unhead/react';
-import { Search, Zap, Globe, Database, Layers, ArrowRight, Lock, Code, ExternalLink, Server } from 'lucide-react';
+import {
+  Search, Zap, Globe, Database, ArrowRight, Lock, Code,
+  ExternalLink, BookOpen, Newspaper, Shield, Layers,
+} from 'lucide-react';
 
 import { Layout } from '@/components/Layout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -9,7 +12,7 @@ import { Badge } from '@/components/ui/badge';
 export default function About() {
   useSeoMeta({
     title: 'About - 0xSearchstr',
-    description: 'Learn about 0xSearchstr, a decentralized search aggregator. Nostr-first, SearXNG fallback, no backend required.',
+    description: 'Learn about 0xSearchstr, a decentralized search aggregator built on a plugin-based provider architecture. Nostr-first, with SearXNG, Wikipedia, Hacker News, and Tor fallback.',
   });
 
   return (
@@ -23,50 +26,59 @@ export default function About() {
           <h1 className="text-3xl font-bold tracking-tight">About 0xSearchstr</h1>
         </div>
         <p className="text-muted-foreground mb-8 leading-relaxed max-w-2xl">
-          A decentralized search aggregator. Instead of building another centralized search engine, 0xSearchstr
-          searches Nostr first, enriches results from privacy-respecting public indexes only when needed,
-          and requires no backend, crawler, or server.
+          A decentralized search aggregator built on a <strong>plugin-based provider architecture</strong>.
+          Every search source is a standalone provider that returns a universal <code className="text-xs bg-muted px-1.5 py-0.5 rounded font-mono">SearchResult[]</code>.
+          The UI merges, deduplicates, and ranks results from all providers — no backend, no crawler, no tracking.
         </p>
 
         <Separator className="mb-8" />
 
-        {/* How it works */}
-        <h2 className="text-xl font-semibold mb-4">How It Works</h2>
+        {/* Architecture */}
+        <h2 className="text-xl font-semibold mb-4">Provider Architecture</h2>
         <Card className="mb-8 border-primary/20">
           <CardContent className="py-6">
-            <div className="space-y-4">
-              <Step
-                number={1}
-                icon={<Zap className="w-4 h-4 text-nostr" />}
-                title="Search Nostr first"
-                description="NIP-50 search queries go directly to relay.nostr.band and relay.ditto.pub. Results include profiles, notes, articles, and files — all with author avatars and engagement signals."
-                active
-              />
-              <div className="flex items-center gap-2 pl-8 text-xs text-muted-foreground">
-                <ArrowRight className="w-3 h-3" />
-                <span>enough results?</span>
-                <span className="text-primary font-medium">show them.</span>
-                <span className="text-muted-foreground/50">not enough?</span>
-                <ArrowRight className="w-3 h-3" />
+            <div className="space-y-3">
+              <div className="flex items-center gap-2 text-sm text-muted-foreground mb-4">
+                <Layers className="w-4 h-4 text-primary" />
+                <span>All providers run <strong className="text-foreground">in parallel</strong> — results stream in as each provider completes</span>
               </div>
-              <Step
-                number={2}
-                icon={<Globe className="w-4 h-4 text-clearnet" />}
-                title="Fall back to SearXNG"
-                description="Query public SearXNG instances that aggregate results from DuckDuckGo, Brave, Wikipedia, and dozens of other engines. If one instance fails, automatically try the next."
-                active
-              />
-              <div className="flex items-center gap-2 pl-8 text-xs text-muted-foreground">
-                <ArrowRight className="w-3 h-3" />
-                <span>still nothing?</span>
-                <ArrowRight className="w-3 h-3" />
-              </div>
-              <Step
-                number={3}
-                icon={<ExternalLink className="w-4 h-4 text-muted-foreground" />}
-                title="Browser fallback"
-                description="Direct links to DuckDuckGo, Brave Search, Presearch, Mojeek, and Marginalia so you're never left with zero results."
-              />
+              <Step number={1} icon={<Zap className="w-4 h-4 text-nostr" />} title="Nostr Provider" description="NIP-50 search queries to relay.nostr.band and relay.ditto.pub. Profiles, notes, articles, and files — all with rich rendering." active />
+              <Step number={2} icon={<Globe className="w-4 h-4 text-clearnet" />} title="SearXNG Provider" description="Meta-search across DuckDuckGo, Brave, Wikipedia, and dozens more via public instances with automatic failover." active />
+              <Step number={3} icon={<BookOpen className="w-4 h-4" />} title="Wikipedia Provider" description="Direct MediaWiki API queries. No proxy needed — Wikipedia sets CORS headers." active />
+              <Step number={4} icon={<Newspaper className="w-4 h-4" />} title="Hacker News Provider" description="Algolia-powered HN search API. Stories with points, comments, and author attribution." active />
+              <Step number={5} icon={<Shield className="w-4 h-4 text-tor" />} title="Tor Provider (Ahmia)" description="Policy-compliant .onion search via Ahmia.fi with warning interstitials before opening hidden services." active />
+            </div>
+            <div className="mt-6 p-4 rounded-lg bg-muted/50 border border-border/50">
+              <p className="text-sm text-muted-foreground">
+                <strong className="text-foreground">Adding a provider:</strong>{' '}
+                Create <code className="text-xs bg-muted px-1 py-0.5 rounded font-mono">src/lib/providers/my-provider.ts</code>,
+                implement <code className="text-xs bg-muted px-1 py-0.5 rounded font-mono">SearchProvider</code>,
+                and add it to the registry. No core code changes needed.
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* How it works */}
+        <h2 className="text-xl font-semibold mb-4">Search Flow</h2>
+        <Card className="mb-8">
+          <CardContent className="py-6">
+            <div className="flex items-center gap-2 text-xs text-muted-foreground flex-wrap">
+              <span className="px-2 py-1 rounded bg-primary/10 text-primary font-medium">Query</span>
+              <ArrowRight className="w-3 h-3" />
+              <span className="px-2 py-1 rounded bg-nostr/10 text-nostr font-medium">Nostr</span>
+              <span className="text-muted-foreground/30">+</span>
+              <span className="px-2 py-1 rounded bg-clearnet/10 text-clearnet font-medium">SearXNG</span>
+              <span className="text-muted-foreground/30">+</span>
+              <span className="px-2 py-1 rounded bg-muted font-medium">Wiki</span>
+              <span className="text-muted-foreground/30">+</span>
+              <span className="px-2 py-1 rounded bg-muted font-medium">HN</span>
+              <span className="text-muted-foreground/30">+</span>
+              <span className="px-2 py-1 rounded bg-tor/10 text-tor font-medium">Tor</span>
+              <ArrowRight className="w-3 h-3" />
+              <span className="px-2 py-1 rounded bg-primary/10 text-primary font-medium">Merge + Rank</span>
+              <ArrowRight className="w-3 h-3" />
+              <span className="px-2 py-1 rounded bg-primary/10 text-primary font-medium">Display</span>
             </div>
           </CardContent>
         </Card>
@@ -80,8 +92,9 @@ export default function About() {
                 { label: 'No backend required', detail: 'Everything runs in the browser. No servers, no crawlers, no infrastructure to maintain.' },
                 { label: 'Nostr-native', detail: 'Nostr results are first-class citizens with rich rendering — avatars, content previews, NIP-19 links.' },
                 { label: 'Privacy by default', detail: 'SearXNG instances don\'t track users. No search queries are logged anywhere.' },
-                { label: 'Resilient', detail: 'Multiple SearXNG instances with automatic failover. Multiple Nostr relays in parallel. Browser fallback as last resort.' },
-                { label: 'Incrementally upgradeable', detail: 'The backend stack (Meilisearch, crawlers, NIP-50 relay) is available in the repo for self-hosting when you\'re ready to scale.' },
+                { label: 'Plugin architecture', detail: 'Every provider is a standalone module. Add Wikipedia, Hacker News, GitHub, Archive.org — one file each, no core changes.' },
+                { label: 'Incremental results', detail: 'Providers run in parallel. Results appear as each provider finishes, with live status indicators.' },
+                { label: 'Resilient', detail: 'Multiple SearXNG instances with failover. Multiple Nostr relays. Browser fallback links as last resort.' },
               ].map((item) => (
                 <li key={item.label} className="flex items-start gap-3">
                   <span className="text-primary font-mono mt-0.5 shrink-0 text-sm">{'>'}</span>
@@ -95,12 +108,12 @@ export default function About() {
           </CardContent>
         </Card>
 
-        {/* Search sources detail */}
-        <h2 className="text-xl font-semibold mb-4">Search Sources</h2>
+        {/* Search providers detail */}
+        <h2 className="text-xl font-semibold mb-4">Search Providers</h2>
         <div className="grid gap-4 mb-8">
           <SourceCard
             icon={<Zap className="w-5 h-5" />}
-            title="Nostr Protocol (NIP-50)"
+            title="Nostr (NIP-50)"
             status="active"
             color="text-nostr"
             features={[
@@ -116,22 +129,43 @@ export default function About() {
             status="active"
             color="text-clearnet"
             features={[
-              'Aggregates results from dozens of engines (DDG, Brave, Wikipedia, etc.)',
+              'Aggregates results from DuckDuckGo, Brave, Wikipedia, and more',
               'Pool of public instances with automatic failover',
               'Privacy-preserving — no tracking, no user profiling',
               'Accessed via CORS proxy for browser compatibility',
             ]}
           />
           <SourceCard
-            icon={<Server className="w-5 h-5" />}
-            title="Self-Hosted Backend (Optional)"
-            status="optional"
-            color="text-muted-foreground"
+            icon={<BookOpen className="w-5 h-5" />}
+            title="Wikipedia"
+            status="active"
+            color="text-foreground"
             features={[
-              'Meilisearch-powered full-text search index',
-              'Nostr crawler, clearnet crawler, Tor/I2P crawler',
-              'NIP-50 relay proxy for custom search relay',
-              'Docker Compose — one command to deploy everything',
+              'MediaWiki search API — no proxy needed',
+              'Encyclopedia entries with article summaries',
+              'Timestamps and revision metadata',
+            ]}
+          />
+          <SourceCard
+            icon={<Newspaper className="w-5 h-5" />}
+            title="Hacker News"
+            status="active"
+            color="text-foreground"
+            features={[
+              'Algolia-powered search — stories, points, comments',
+              'Author attribution and original source links',
+              'No API key required',
+            ]}
+          />
+          <SourceCard
+            icon={<Shield className="w-5 h-5" />}
+            title="Tor (Ahmia)"
+            status="active"
+            color="text-tor"
+            features={[
+              'Policy-compliant .onion search',
+              'Warning interstitials before opening hidden services',
+              'Fallback links to Torch and Haystak',
             ]}
           />
         </div>
@@ -178,6 +212,7 @@ export default function About() {
                   'Run entirely in the browser — no server-side search logging',
                   'Search Nostr relays directly via WebSocket',
                   'Query privacy-respecting SearXNG instances as a web fallback',
+                  'Query Wikipedia and Hacker News APIs directly',
                   'Provide fallback links to privacy-focused search engines',
                   'Open source — verify every line of code',
                 ].map((item) => (
@@ -193,10 +228,10 @@ export default function About() {
               <ul className="space-y-1.5 text-sm text-muted-foreground">
                 {[
                   'Store or log search queries (client-side only)',
-                  'Run its own crawler or indexing backend by default',
+                  'Run its own crawler or indexing backend',
                   'Track users, fingerprint browsers, or set cookies',
                   'Act as a proxy — web links open directly in your browser',
-                  'Guarantee result completeness — relay availability varies',
+                  'Guarantee result completeness — relay and API availability varies',
                 ].map((item) => (
                   <li key={item} className="flex items-start gap-2">
                     <span className="text-destructive/60 mt-0.5 shrink-0">-</span>

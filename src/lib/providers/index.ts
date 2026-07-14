@@ -1,0 +1,17 @@
+/**
+ * Search providers — barrel export.
+ */
+export type {
+  SearchResult,
+  SearchSource,
+  SearchProvider,
+  SearchOptions,
+  ProviderSearchResponse,
+} from './types';
+
+export { nostrProvider } from './nostr';
+export { searxngProvider } from './searxng';
+export { torProvider } from './tor';
+export { wikipediaProvider } from './wikipedia';
+export { hackerNewsProvider } from './hacker-news';
+export { ALL_PROVIDERS, getProvidersForSource, getProvider, getAvailableSources } from './registry';

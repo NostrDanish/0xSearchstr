@@ -1,17 +1,18 @@
 import { cn } from '@/lib/utils';
-import { Layers, Zap, Globe, Shield, Network } from 'lucide-react';
+import { Layers, Zap, Globe, Shield, Network, BookOpen, Newspaper } from 'lucide-react';
+import type { SearchSource } from '@/lib/providers/types';
 
-export type SearchSource = 'all' | 'nostr' | 'web' | 'tor' | 'i2p';
+export type SourceTabValue = SearchSource | 'all' | 'i2p';
 
 interface SourceTabsProps {
-  value: SearchSource;
-  onChange: (source: SearchSource) => void;
+  value: SourceTabValue;
+  onChange: (source: SourceTabValue) => void;
   className?: string;
   /** Optional result counts to show in badges. */
-  counts?: Partial<Record<SearchSource, number>>;
+  counts?: Partial<Record<SourceTabValue, number>>;
 }
 
-const sources: { id: SearchSource; label: string; icon: React.ReactNode; color: string; activeColor: string }[] = [
+const sources: { id: SourceTabValue; label: string; icon: React.ReactNode; color: string; activeColor: string }[] = [
   {
     id: 'all',
     label: 'All',
@@ -32,6 +33,20 @@ const sources: { id: SearchSource; label: string; icon: React.ReactNode; color: 
     icon: <Globe className="w-3.5 h-3.5" />,
     color: 'text-clearnet/70 hover:text-clearnet',
     activeColor: 'text-clearnet bg-clearnet/10 border-clearnet/30',
+  },
+  {
+    id: 'wiki',
+    label: 'Wiki',
+    icon: <BookOpen className="w-3.5 h-3.5" />,
+    color: 'text-foreground/60 hover:text-foreground',
+    activeColor: 'text-foreground bg-accent border-border',
+  },
+  {
+    id: 'news',
+    label: 'News',
+    icon: <Newspaper className="w-3.5 h-3.5" />,
+    color: 'text-foreground/60 hover:text-foreground',
+    activeColor: 'text-foreground bg-accent border-border',
   },
   {
     id: 'tor',
