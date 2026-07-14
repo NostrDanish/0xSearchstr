@@ -1,5 +1,5 @@
 import { useSeoMeta } from '@unhead/react';
-import { Search, Zap, Globe, Shield, Network, Server, Lock, Code, ExternalLink } from 'lucide-react';
+import { Search, Zap, Globe, Database, Layers, ArrowRight, Lock, Code, ExternalLink, Server } from 'lucide-react';
 
 import { Layout } from '@/components/Layout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -9,7 +9,7 @@ import { Badge } from '@/components/ui/badge';
 export default function About() {
   useSeoMeta({
     title: 'About - 0xSearchstr',
-    description: 'Learn about 0xSearchstr, a federated privacy-first search engine that indexes Nostr, the clearnet, and dark web services.',
+    description: 'Learn about 0xSearchstr, a decentralized search aggregator. Nostr-first, SearXNG fallback, no backend required.',
   });
 
   return (
@@ -23,63 +23,115 @@ export default function About() {
           <h1 className="text-3xl font-bold tracking-tight">About 0xSearchstr</h1>
         </div>
         <p className="text-muted-foreground mb-8 leading-relaxed max-w-2xl">
-          A federated, privacy-first search engine that indexes three sources: the Nostr protocol,
-          the clearnet, and Tor/I2P hidden services.
+          A decentralized search aggregator. Instead of building another centralized search engine, 0xSearchstr
+          searches Nostr first, enriches results from privacy-respecting public indexes only when needed,
+          and requires no backend, crawler, or server.
         </p>
 
         <Separator className="mb-8" />
 
-        {/* Architecture overview */}
-        <h2 className="text-xl font-semibold mb-4">Architecture</h2>
+        {/* How it works */}
+        <h2 className="text-xl font-semibold mb-4">How It Works</h2>
+        <Card className="mb-8 border-primary/20">
+          <CardContent className="py-6">
+            <div className="space-y-4">
+              <Step
+                number={1}
+                icon={<Zap className="w-4 h-4 text-nostr" />}
+                title="Search Nostr first"
+                description="NIP-50 search queries go directly to relay.nostr.band and relay.ditto.pub. Results include profiles, notes, articles, and files — all with author avatars and engagement signals."
+                active
+              />
+              <div className="flex items-center gap-2 pl-8 text-xs text-muted-foreground">
+                <ArrowRight className="w-3 h-3" />
+                <span>enough results?</span>
+                <span className="text-primary font-medium">show them.</span>
+                <span className="text-muted-foreground/50">not enough?</span>
+                <ArrowRight className="w-3 h-3" />
+              </div>
+              <Step
+                number={2}
+                icon={<Globe className="w-4 h-4 text-clearnet" />}
+                title="Fall back to SearXNG"
+                description="Query public SearXNG instances that aggregate results from DuckDuckGo, Brave, Wikipedia, and dozens of other engines. If one instance fails, automatically try the next."
+                active
+              />
+              <div className="flex items-center gap-2 pl-8 text-xs text-muted-foreground">
+                <ArrowRight className="w-3 h-3" />
+                <span>still nothing?</span>
+                <ArrowRight className="w-3 h-3" />
+              </div>
+              <Step
+                number={3}
+                icon={<ExternalLink className="w-4 h-4 text-muted-foreground" />}
+                title="Browser fallback"
+                description="Direct links to DuckDuckGo, Brave Search, Presearch, Mojeek, and Marginalia so you're never left with zero results."
+              />
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Why this architecture */}
+        <h2 className="text-xl font-semibold mb-4">Why an Aggregator?</h2>
+        <Card className="mb-8">
+          <CardContent className="py-5">
+            <ul className="space-y-3 text-sm text-muted-foreground">
+              {[
+                { label: 'No backend required', detail: 'Everything runs in the browser. No servers, no crawlers, no infrastructure to maintain.' },
+                { label: 'Nostr-native', detail: 'Nostr results are first-class citizens with rich rendering — avatars, content previews, NIP-19 links.' },
+                { label: 'Privacy by default', detail: 'SearXNG instances don\'t track users. No search queries are logged anywhere.' },
+                { label: 'Resilient', detail: 'Multiple SearXNG instances with automatic failover. Multiple Nostr relays in parallel. Browser fallback as last resort.' },
+                { label: 'Incrementally upgradeable', detail: 'The backend stack (Meilisearch, crawlers, NIP-50 relay) is available in the repo for self-hosting when you\'re ready to scale.' },
+              ].map((item) => (
+                <li key={item.label} className="flex items-start gap-3">
+                  <span className="text-primary font-mono mt-0.5 shrink-0 text-sm">{'>'}</span>
+                  <div>
+                    <span className="text-foreground font-medium">{item.label}</span>
+                    <span className="text-muted-foreground"> — {item.detail}</span>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </CardContent>
+        </Card>
+
+        {/* Search sources detail */}
+        <h2 className="text-xl font-semibold mb-4">Search Sources</h2>
         <div className="grid gap-4 mb-8">
           <SourceCard
             icon={<Zap className="w-5 h-5" />}
-            title="Nostr Protocol"
+            title="Nostr Protocol (NIP-50)"
             status="active"
             color="text-nostr"
             features={[
-              'NIP-50 search queries to relay.nostr.band and relay.ditto.pub',
+              'Direct client-side relay connections — no intermediary',
               'Indexes kinds 0 (profiles), 1 (notes), 30023 (articles), 1063 (files)',
-              'Deduplicates by event ID across multiple relays',
-              'Results ranked by relay relevance scoring',
-              'Direct client-side relay connections — no intermediary server',
+              'Deduplicates across relay.nostr.band + relay.ditto.pub',
+              'Results ranked by relay relevance, sorted by recency',
             ]}
           />
           <SourceCard
             icon={<Globe className="w-5 h-5" />}
-            title="Clearnet"
-            status="backend"
+            title="SearXNG (Meta-Search)"
+            status="active"
             color="text-clearnet"
             features={[
-              'Polite crawler respecting robots.txt and rate limits',
-              'Seeded from curated directories + sitemap discovery',
-              'Full-text indexed in Meilisearch with source: clearnet facet',
-              'Requires self-hosted backend (docker-compose)',
+              'Aggregates results from dozens of engines (DDG, Brave, Wikipedia, etc.)',
+              'Pool of public instances with automatic failover',
+              'Privacy-preserving — no tracking, no user profiling',
+              'Accessed via CORS proxy for browser compatibility',
             ]}
           />
           <SourceCard
-            icon={<Shield className="w-5 h-5" />}
-            title="Tor Hidden Services"
-            status="backend"
-            color="text-tor"
+            icon={<Server className="w-5 h-5" />}
+            title="Self-Hosted Backend (Optional)"
+            status="optional"
+            color="text-muted-foreground"
             features={[
-              'Crawl via local Tor SOCKS5 proxy',
-              'Content policy enforcement (mirrors Ahmia approach)',
-              'Known-bad domain/hash list filtering',
-              'Keyword/category classifiers before indexing',
-              'Tagged source: tor with warning interstitials',
-            ]}
-          />
-          <SourceCard
-            icon={<Network className="w-5 h-5" />}
-            title="I2P Network"
-            status="backend"
-            color="text-i2p"
-            features={[
-              'Crawl via local i2pd router',
-              'Same content policy as Tor indexing',
-              'Tagged source: i2p in results',
-              'Warning interstitials before rendering i2p links',
+              'Meilisearch-powered full-text search index',
+              'Nostr crawler, clearnet crawler, Tor/I2P crawler',
+              'NIP-50 relay proxy for custom search relay',
+              'Docker Compose — one command to deploy everything',
             ]}
           />
         </div>
@@ -95,10 +147,10 @@ export default function About() {
                 { name: 'TailwindCSS 4', category: 'Styling' },
                 { name: 'Nostrify', category: 'Nostr SDK' },
                 { name: 'NIP-50', category: 'Search Protocol' },
+                { name: 'SearXNG', category: 'Web Meta-Search' },
                 { name: 'TanStack Query', category: 'Data Fetching' },
                 { name: 'shadcn/ui', category: 'Components' },
                 { name: 'Vite', category: 'Build Tool' },
-                { name: 'Meilisearch*', category: 'Index Engine' },
               ].map((tech) => (
                 <div key={tech.name} className="flex flex-col">
                   <span className="text-sm font-medium text-foreground">{tech.name}</span>
@@ -106,68 +158,12 @@ export default function About() {
                 </div>
               ))}
             </div>
-            <p className="text-xs text-muted-foreground mt-4">
-              * Meilisearch is required for clearnet/Tor/I2P indexing (backend deployment only).
-            </p>
           </CardContent>
         </Card>
 
-        {/* Self-hosting */}
-        <h2 className="text-xl font-semibold mb-4">Self-Hosting</h2>
-        <Card className="mb-8">
-          <CardHeader className="pb-3">
-            <CardTitle className="flex items-center gap-2 text-base">
-              <Server className="w-4 h-4" />
-              Docker Compose Deployment
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-sm text-muted-foreground mb-4">
-              The full 0xSearchstr stack can be self-hosted with a single docker-compose bringing up:
-            </p>
-            <div className="font-mono text-sm bg-muted/50 rounded-lg p-4 border border-border/50 space-y-1.5">
-              <div className="flex items-center gap-2">
-                <span className="text-primary">{'>'}</span>
-                <span className="text-muted-foreground">meilisearch</span>
-                <span className="text-muted-foreground/50">— search index engine</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="text-primary">{'>'}</span>
-                <span className="text-muted-foreground">nostr-crawler</span>
-                <span className="text-muted-foreground/50">— NIP-01 REQ subscriber</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="text-primary">{'>'}</span>
-                <span className="text-muted-foreground">web-crawler</span>
-                <span className="text-muted-foreground/50">— polite clearnet crawler</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="text-primary">{'>'}</span>
-                <span className="text-muted-foreground">tor-proxy</span>
-                <span className="text-muted-foreground/50">— SOCKS5 proxy for onion crawling</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="text-primary">{'>'}</span>
-                <span className="text-muted-foreground">i2pd</span>
-                <span className="text-muted-foreground/50">— I2P router for eepsite crawling</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="text-primary">{'>'}</span>
-                <span className="text-muted-foreground">nip50-relay</span>
-                <span className="text-muted-foreground/50">— NIP-50 search relay proxy</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="text-primary">{'>'}</span>
-                <span className="text-muted-foreground">frontend</span>
-                <span className="text-muted-foreground/50">— this UI (Vite static build)</span>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Threat model */}
-        <h2 className="text-xl font-semibold mb-4">Threat Model</h2>
-        <Card className="mb-8 border-destructive/20">
+        {/* Privacy model */}
+        <h2 className="text-xl font-semibold mb-4">Privacy Model</h2>
+        <Card className="mb-8 border-primary/20">
           <CardHeader className="pb-3">
             <CardTitle className="flex items-center gap-2 text-base">
               <Lock className="w-4 h-4" />
@@ -176,14 +172,14 @@ export default function About() {
           </CardHeader>
           <CardContent className="space-y-4">
             <div>
-              <h4 className="text-sm font-medium text-foreground mb-2">This tool DOES:</h4>
+              <h4 className="text-sm font-medium text-foreground mb-2">Does:</h4>
               <ul className="space-y-1.5 text-sm text-muted-foreground">
                 {[
-                  'Index publicly available content from Nostr relays, clearnet, and hidden services',
-                  'Apply content policy filters BEFORE indexing (hard-block CSAM, trafficking, weapons, drug markets)',
-                  'Provide an abuse-report endpoint for content removal requests',
-                  'Tag results by source so users know what network they are accessing',
-                  'Show warning interstitials before rendering onion/i2p links',
+                  'Run entirely in the browser — no server-side search logging',
+                  'Search Nostr relays directly via WebSocket',
+                  'Query privacy-respecting SearXNG instances as a web fallback',
+                  'Provide fallback links to privacy-focused search engines',
+                  'Open source — verify every line of code',
                 ].map((item) => (
                   <li key={item} className="flex items-start gap-2">
                     <span className="text-primary/60 mt-0.5 shrink-0">+</span>
@@ -193,14 +189,14 @@ export default function About() {
               </ul>
             </div>
             <div>
-              <h4 className="text-sm font-medium text-foreground mb-2">This tool does NOT:</h4>
+              <h4 className="text-sm font-medium text-foreground mb-2">Does not:</h4>
               <ul className="space-y-1.5 text-sm text-muted-foreground">
                 {[
-                  'Host, cache, or serve any indexed content',
-                  'Act as a proxy or gateway to hidden services',
-                  'Store or log user search queries (client-side only)',
-                  'Guarantee completeness — relay availability and content policy filtering means some content is intentionally excluded',
-                  'Replace due diligence — users are responsible for understanding the legal implications of content in their jurisdiction',
+                  'Store or log search queries (client-side only)',
+                  'Run its own crawler or indexing backend by default',
+                  'Track users, fingerprint browsers, or set cookies',
+                  'Act as a proxy — web links open directly in your browser',
+                  'Guarantee result completeness — relay availability varies',
                 ].map((item) => (
                   <li key={item} className="flex items-start gap-2">
                     <span className="text-destructive/60 mt-0.5 shrink-0">-</span>
@@ -239,10 +235,35 @@ export default function About() {
   );
 }
 
+function Step({ number, icon, title, description, active }: {
+  number: number;
+  icon: React.ReactNode;
+  title: string;
+  description: string;
+  active?: boolean;
+}) {
+  return (
+    <div className="flex items-start gap-3">
+      <div className={`flex items-center justify-center w-8 h-8 rounded-lg shrink-0 text-sm font-bold ${
+        active ? 'bg-primary/10 text-primary border border-primary/20' : 'bg-muted text-muted-foreground'
+      }`}>
+        {number}
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2 mb-0.5">
+          {icon}
+          <span className="text-sm font-semibold">{title}</span>
+        </div>
+        <p className="text-sm text-muted-foreground">{description}</p>
+      </div>
+    </div>
+  );
+}
+
 function SourceCard({ icon, title, status, color, features }: {
   icon: React.ReactNode;
   title: string;
-  status: 'active' | 'backend';
+  status: 'active' | 'optional';
   color: string;
   features: string[];
 }) {
@@ -256,7 +277,7 @@ function SourceCard({ icon, title, status, color, features }: {
             variant={status === 'active' ? 'default' : 'outline'}
             className={status === 'active' ? 'ml-auto text-[10px]' : 'ml-auto text-[10px] text-muted-foreground'}
           >
-            {status === 'active' ? 'Live' : 'Backend Required'}
+            {status === 'active' ? 'Live' : 'Self-Host'}
           </Badge>
         </CardTitle>
       </CardHeader>

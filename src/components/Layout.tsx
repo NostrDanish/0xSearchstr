@@ -85,7 +85,7 @@ export function Layout({ children, minimal = false }: LayoutProps) {
             <span className="font-mono text-primary/70">0x</span>
             <span>Searchstr</span>
             <span className="text-border">|</span>
-            <span>Federated, privacy-first search</span>
+            <span>Decentralized search aggregator</span>
           </div>
           <div className="flex items-center gap-4">
             <Link to="/policy" className="hover:text-foreground transition-colors">Content Policy</Link>
