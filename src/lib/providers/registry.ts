@@ -7,6 +7,7 @@
  *   3. Done — the orchestrator picks it up automatically
  */
 import type { SearchProvider, SearchSource } from './types';
+import { cachedIndexProvider } from './cached-index';
 import { nostrProvider } from './nostr';
 import { searxngProvider } from './searxng';
 import { duckduckgoProvider } from './duckduckgo';
@@ -15,8 +16,15 @@ import { wikipediaProvider } from './wikipedia';
 import { hackerNewsProvider } from './hacker-news';
 import { stackOverflowProvider } from './stackoverflow';
 
-/** All registered search providers, in priority order. */
+/**
+ * All registered search providers, in priority order.
+ *
+ * The cached-index provider runs first — if the query was searched before,
+ * results come from Nostr instantly. All other providers still run in parallel,
+ * and their results get merged + deduped with the cache.
+ */
 export const ALL_PROVIDERS: SearchProvider[] = [
+  cachedIndexProvider,
   nostrProvider,
   searxngProvider,
   duckduckgoProvider,

@@ -15,8 +15,18 @@ export const APP_RELAYS: RelayMetadata = {
   updatedAt: 0,
 };
 
-/** Relays that support NIP-50 search queries. */
+/**
+ * Relays that support NIP-50 search queries.
+ * These are queried in parallel for every Nostr search.
+ *
+ * relay.nostr.band — the most comprehensive NIP-50 search relay
+ * relay.ditto.pub — Ditto relay with search support
+ * search.nos.today — NOS search relay
+ * relay.noswhere.com — Noswhere relay with NIP-50
+ */
 export const SEARCH_RELAYS = [
   'wss://relay.nostr.band/',
   'wss://relay.ditto.pub/',
+  'wss://search.nos.today/',
+  'wss://relay.noswhere.com/',
 ];

@@ -9,6 +9,7 @@ export type {
   ProviderSearchResponse,
 } from './types';
 
+export { cachedIndexProvider } from './cached-index';
 export { nostrProvider } from './nostr';
 export { searxngProvider } from './searxng';
 export { duckduckgoProvider } from './duckduckgo';

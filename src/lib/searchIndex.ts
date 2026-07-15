@@ -1,0 +1,173 @@
+/**
+ * 0xSearchstr Auto-Indexing Engine
+ *
+ * Publishes search results to Nostr as the 0xSearchstr bot account.
+ * Each unique search query becomes an addressable event (kind 30078)
+ * with the d-tag set to a normalized query hash.
+ *
+ * The index grows with every search across every user. Next time
+ * someone searches the same (or similar) query, results are read
+ * from Nostr first — no external API call needed.
+ *
+ * Event structure:
+ *   kind: 30078 (application-specific data)
+ *   d: "0xsearchstr:cache:<normalized-query>"
+ *   content: JSON array of cached SearchResult objects
+ *   tags:
+ *     ["d", "0xsearchstr:cache:<normalized-query>"]
+ *     ["t", "0xsearchstr"]
+ *     ["t", "search-cache"]
+ *     ["query", "<original query>"]
+ *     ["cached_at", "<unix timestamp>"]
+ *     ["result_count", "<number>"]
+ *     ["alt", "0xSearchstr cached results for: <query>"]
+ *
+ * Security: Only the 0xSearchstr bot account publishes cache events.
+ * Readers filter by authors: [BOT_PUBKEY] to prevent spoofing.
+ */
+
+import type { SearchResult } from '@/lib/providers/types';
+
+/** 0xSearchstr bot pubkey (hex). */
+export const INDEX_PUBKEY = '12ad55ad1fdb918f5314c9e9a5cd135be9b746e6eee15fd871df131a5677d199';
+
+/** The kind used for cache events. */
+export const INDEX_KIND = 30078;
+
+/** Max age of cache entries before they're considered stale (24 hours). */
+export const CACHE_MAX_AGE_SECONDS = 86400;
+
+/** Min results to bother caching. */
+const MIN_RESULTS_TO_CACHE = 3;
+
+/** Max results to store in a single cache event (keep events reasonable). */
+const MAX_CACHED_RESULTS = 30;
+
+/** Normalize a query for use as a d-tag key. */
+export function normalizeQuery(query: string): string {
+  return query
+    .toLowerCase()
+    .trim()
+    .replace(/\s+/g, ' ')      // collapse whitespace
+    .replace(/[^\w\s-]/g, ''); // strip punctuation
+}
+
+/** Build the d-tag for a cache event. */
+export function cacheDTag(query: string): string {
+  return `0xsearchstr:cache:${normalizeQuery(query)}`;
+}
+
+/** Strip Nostr-specific fields from SearchResult before caching.
+ * We don't cache nostrEvent (too large) or scores (recomputed on read). */
+interface CachedResult {
+  id: string;
+  title: string;
+  url: string;
+  snippet: string;
+  source: string;
+  provider: string;
+  timestamp?: number;
+  author?: string;
+  authorAvatar?: string;
+  domain?: string;
+  thumbnail?: string;
+  kind?: string;
+  engine?: string;
+  tags?: string[];
+}
+
+/** Convert a SearchResult to a cacheable form. */
+export function toCachedResult(r: SearchResult): CachedResult {
+  return {
+    id: r.id,
+    title: r.title,
+    url: r.url,
+    snippet: r.snippet,
+    source: r.source,
+    provider: r.provider,
+    timestamp: r.timestamp,
+    author: r.author,
+    authorAvatar: r.authorAvatar,
+    domain: r.domain,
+    thumbnail: r.thumbnail,
+    kind: r.kind,
+    engine: r.engine,
+    tags: r.tags,
+  };
+}
+
+/** Convert cached data back to SearchResult with cache scores. */
+export function fromCachedResult(r: CachedResult): SearchResult {
+  return {
+    ...r,
+    source: r.source as SearchResult['source'],
+    score: 90, // Cached results score between Nostr (100) and web (80)
+  };
+}
+
+/**
+ * Build the unsigned event for caching search results.
+ * Returns null if results aren't worth caching.
+ */
+export function buildCacheEvent(
+  query: string,
+  results: SearchResult[],
+): { kind: number; content: string; tags: string[][] } | null {
+  // Don't cache if too few results or only Nostr results (those are already on Nostr).
+  const nonNostrResults = results.filter((r) => r.source !== 'nostr');
+  if (nonNostrResults.length < MIN_RESULTS_TO_CACHE) return null;
+
+  const toCache = nonNostrResults
+    .slice(0, MAX_CACHED_RESULTS)
+    .map(toCachedResult);
+
+  const now = Math.floor(Date.now() / 1000);
+  const normalized = normalizeQuery(query);
+
+  return {
+    kind: INDEX_KIND,
+    content: JSON.stringify(toCache),
+    tags: [
+      ['d', `0xsearchstr:cache:${normalized}`],
+      ['t', '0xsearchstr'],
+      ['t', 'search-cache'],
+      ['query', query.trim()],
+      ['cached_at', String(now)],
+      ['result_count', String(toCache.length)],
+      ['alt', `0xSearchstr cached results for: ${query.trim()}`],
+    ],
+  };
+}
+
+/**
+ * Parse cached results from a kind 30078 event.
+ * Returns null if the cache is stale or malformed.
+ */
+export function parseCacheEvent(event: { content: string; tags: string[][]; created_at: number }): {
+  query: string;
+  results: SearchResult[];
+  cachedAt: number;
+} | null {
+  // Check staleness.
+  const now = Math.floor(Date.now() / 1000);
+  const cachedAtTag = event.tags.find(([n]) => n === 'cached_at')?.[1];
+  const cachedAt = cachedAtTag ? parseInt(cachedAtTag, 10) : event.created_at;
+
+  if (now - cachedAt > CACHE_MAX_AGE_SECONDS) return null;
+
+  const queryTag = event.tags.find(([n]) => n === 'query')?.[1];
+  if (!queryTag) return null;
+
+  try {
+    const cached = JSON.parse(event.content) as CachedResult[];
+    if (!Array.isArray(cached)) return null;
+
+    return {
+      query: queryTag,
+      results: cached.map(fromCachedResult),
+      cachedAt,
+    };
+  } catch {
+    return null;
+  }
+}

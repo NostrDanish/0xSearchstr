@@ -9,11 +9,12 @@
  *
  * Returns per-provider status so the UI can show live progress indicators.
  */
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 import type { SearchResult, SearchSource, ProviderSearchResponse } from '@/lib/providers/types';
 import { getProvidersForSource } from '@/lib/providers/registry';
+import { useSearchIndexer } from '@/hooks/useSearchIndexer';
 
 export type ProviderStatus = 'idle' | 'searching' | 'done' | 'error';
 
@@ -63,6 +64,7 @@ export function useProviderSearch({
 }: UseProviderSearchOptions): UseProviderSearchResult {
   const queryClient = useQueryClient();
   const activeProviders = useMemo(() => getProvidersForSource(source), [source]);
+  const { indexResults } = useSearchIndexer();
 
   // Provider states tracked outside React Query for per-provider granularity.
   const [providerStates, setProviderStates] = useState<Map<string, ProviderState>>(new Map());
@@ -168,6 +170,20 @@ export function useProviderSearch({
 
   const allResults = data?.results ?? [];
   const suggestions = data?.suggestions ?? [];
+
+  // Auto-index: publish results to the 0xSearchstr Nostr cache.
+  const indexedQueryRef = useRef('');
+  useEffect(() => {
+    if (
+      allResults.length > 0 &&
+      query.trim() &&
+      !providers.some((p) => p.status === 'searching') &&
+      indexedQueryRef.current !== query
+    ) {
+      indexedQueryRef.current = query;
+      void indexResults(query, allResults);
+    }
+  }, [allResults, query, providers, indexResults]);
 
   // Reset provider states when query clears.
   const providers = useMemo(() => {

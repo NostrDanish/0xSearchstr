@@ -20,6 +20,8 @@ User Search
  │                                                             │
  │  Nostr (NIP-50)  SearXNG   Wikipedia   Hacker News   Tor   │
  │       │              │          │           │          │    │
+ │  Cache Index    DuckDuckGo  Stack Overflow                  │
+ │       │              │          │                            │
  │       ▼              ▼          ▼           ▼          ▼    │
  │   SearchResult[] from each provider                         │
  │                                                             │
@@ -42,9 +44,31 @@ Instead of building another centralized search engine, 0xSearchstr is a **search
 1. **Every source is a provider** — each returns a universal `SearchResult[]`
 2. **All providers run in parallel** — results stream in as each completes
 3. **Nostr scores highest** — decentralized results are prioritized
-4. **Never leaves you empty** — fallback links to privacy-respecting search engines
+4. **Auto-indexing** — every search publishes results back to Nostr as cache events
+5. **Never leaves you empty** — fallback links to privacy-respecting search engines
 
 Everything runs in the browser. No backend, no crawler, no tracking.
+
+### Auto-Indexing (Community Cache)
+
+The killer feature: **every search grows the index.**
+
+When you search, results from web providers get published as Nostr events (kind 30078) under the 0xSearchstr bot account. Next time *anyone* searches the same query — results come from Nostr instantly, no external API call needed.
+
+```
+Search "best monero wallet"
+       │
+       ├─→ Check Nostr cache (0xSearchstr index)
+       │     └─→ Cache HIT? → instant results
+       │
+       ├─→ Run all providers in parallel
+       │     └─→ Merge + deduplicate + rank
+       │
+       └─→ Publish results back to Nostr (auto-index)
+             └─→ Next user gets instant cache hit
+```
+
+The more people use 0xSearchstr, the smarter it gets. No crawler. No database. Just Nostr.
 
 ---
 
@@ -66,6 +90,7 @@ Open `http://localhost:8080` and search.
 ```
 src/lib/providers/
 ├── types.ts          ← SearchResult, SearchProvider interface
+├── cached-index.ts   ← 0xSearchstr's own Nostr cache (reads first!)
 ├── nostr.ts          ← NIP-50 relay search
 ├── searxng.ts        ← SearXNG meta-search with failover
 ├── duckduckgo.ts     ← DuckDuckGo HTML scraper
@@ -98,7 +123,8 @@ interface SearchProvider {
 
 | Provider | Source | API | Notes |
 |----------|--------|-----|-------|
-| **Nostr** | NIP-50 relays | WebSocket | relay.nostr.band + relay.ditto.pub |
+| **Cache Index** | 0xSearchstr Nostr account | WebSocket | Reads previously cached results first |
+| **Nostr** | NIP-50 relays | WebSocket | relay.nostr.band + relay.ditto.pub + 2 more |
 | **SearXNG** | 6 public instances | CORS proxy | DDG, Brave, Wikipedia, and dozens more |
 | **DuckDuckGo** | HTML scraper | CORS proxy | Direct DDG fallback when SearXNG is slow |
 | **Wikipedia** | MediaWiki API | Direct (CORS) | No proxy needed |
