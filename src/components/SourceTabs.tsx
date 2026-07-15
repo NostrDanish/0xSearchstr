@@ -1,5 +1,5 @@
 import { cn } from '@/lib/utils';
-import { Layers, Zap, Globe, Shield, Network, BookOpen, Newspaper } from 'lucide-react';
+import { Layers, Zap, Globe, Shield, Network, BookOpen, Newspaper, Code } from 'lucide-react';
 import type { SearchSource } from '@/lib/providers/types';
 
 export type SourceTabValue = SearchSource | 'all' | 'i2p';
@@ -45,6 +45,13 @@ const sources: { id: SourceTabValue; label: string; icon: React.ReactNode; color
     id: 'news',
     label: 'News',
     icon: <Newspaper className="w-3.5 h-3.5" />,
+    color: 'text-foreground/60 hover:text-foreground',
+    activeColor: 'text-foreground bg-accent border-border',
+  },
+  {
+    id: 'code',
+    label: 'Code',
+    icon: <Code className="w-3.5 h-3.5" />,
     color: 'text-foreground/60 hover:text-foreground',
     activeColor: 'text-foreground bg-accent border-border',
   },

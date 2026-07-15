@@ -13,6 +13,7 @@ export type SearchSource =
   | 'web'
   | 'wiki'
   | 'news'
+  | 'code'
   | 'tor'
   | 'i2p';
 

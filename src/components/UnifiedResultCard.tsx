@@ -12,7 +12,7 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   Globe, ExternalLink, Zap, Shield, AlertTriangle,
-  BookOpen, Newspaper, User, FileText,
+  BookOpen, Newspaper, Code, User, FileText,
 } from 'lucide-react';
 
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
@@ -45,6 +45,11 @@ const SOURCE_STYLE: Record<string, { icon: React.ReactNode; color: string; hover
   },
   news: {
     icon: <Newspaper className="w-3 h-3" />,
+    color: 'border-border text-muted-foreground',
+    hoverBorder: 'hover:border-primary/30',
+  },
+  code: {
+    icon: <Code className="w-3 h-3" />,
     color: 'border-border text-muted-foreground',
     hoverBorder: 'hover:border-primary/30',
   },

@@ -3,7 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import { useSeoMeta } from '@unhead/react';
 import {
   Search, Zap, Globe, Shield, Network, Database, ArrowRight,
-  ExternalLink, BookOpen, Newspaper,
+  ExternalLink, BookOpen, Newspaper, Code,
 } from 'lucide-react';
 
 import { Layout } from '@/components/Layout';
@@ -117,25 +117,28 @@ const Index = () => {
             <SourceTabs value={source} onChange={handleSourceChange} />
           </div>
 
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-7 gap-3 w-full max-w-4xl motion-safe:animate-in motion-safe:fade-in motion-safe:duration-700 motion-safe:delay-500">
-            <FeatureCard icon={<Zap className="w-4 h-4 text-nostr" />} label="Nostr" description="NIP-50 search" active />
+          <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-4 gap-3 w-full max-w-3xl motion-safe:animate-in motion-safe:fade-in motion-safe:duration-700 motion-safe:delay-500">
+            <FeatureCard icon={<Zap className="w-4 h-4 text-nostr" />} label="Nostr" description="Notes + Wiki + Profiles" active />
             <FeatureCard icon={<Globe className="w-4 h-4 text-clearnet" />} label="Web" description="DDG + SearXNG" active />
             <FeatureCard icon={<BookOpen className="w-4 h-4 text-foreground/70" />} label="Wiki" description="Wikipedia" active />
             <FeatureCard icon={<Newspaper className="w-4 h-4 text-foreground/70" />} label="News" description="Hacker News" active />
+            <FeatureCard icon={<Code className="w-4 h-4 text-foreground/70" />} label="Code" description="Stack Overflow" active />
             <FeatureCard icon={<Shield className="w-4 h-4 text-tor" />} label="Tor" description="Ahmia" active />
             <FeatureCard icon={<Network className="w-4 h-4 text-i2p" />} label="I2P" description="Directories" active />
-            <FeatureCard icon={<Database className="w-4 h-4 text-primary" />} label="No Backend" description="Client-side" active />
+            <FeatureCard icon={<Database className="w-4 h-4 text-primary" />} label="No Backend" description="Client-side only" active />
           </div>
 
           <div className="mt-10 max-w-lg text-center motion-safe:animate-in motion-safe:fade-in motion-safe:duration-700 motion-safe:delay-700">
             <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground/60 flex-wrap">
               <span className="text-nostr font-medium">Nostr</span>
-              <ArrowRight className="w-3 h-3" />
+              <span className="text-muted-foreground/30">+</span>
               <span className="text-clearnet font-medium">Web</span>
               <span className="text-muted-foreground/30">+</span>
               <span className="font-medium">Wiki</span>
               <span className="text-muted-foreground/30">+</span>
               <span className="font-medium">News</span>
+              <span className="text-muted-foreground/30">+</span>
+              <span className="font-medium">Code</span>
               <span className="text-muted-foreground/30">+</span>
               <span className="text-tor font-medium">Tor</span>
               <ArrowRight className="w-3 h-3" />

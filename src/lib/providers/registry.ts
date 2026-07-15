@@ -13,6 +13,7 @@ import { duckduckgoProvider } from './duckduckgo';
 import { torProvider } from './tor';
 import { wikipediaProvider } from './wikipedia';
 import { hackerNewsProvider } from './hacker-news';
+import { stackOverflowProvider } from './stackoverflow';
 
 /** All registered search providers, in priority order. */
 export const ALL_PROVIDERS: SearchProvider[] = [
@@ -21,6 +22,7 @@ export const ALL_PROVIDERS: SearchProvider[] = [
   duckduckgoProvider,
   wikipediaProvider,
   hackerNewsProvider,
+  stackOverflowProvider,
   torProvider,
 ];
 

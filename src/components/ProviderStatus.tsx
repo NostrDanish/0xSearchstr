@@ -20,6 +20,7 @@ const SOURCE_COLORS: Record<string, string> = {
   web: 'text-clearnet',
   wiki: 'text-foreground/70',
   news: 'text-foreground/70',
+  code: 'text-foreground/70',
   tor: 'text-tor',
   i2p: 'text-i2p',
 };

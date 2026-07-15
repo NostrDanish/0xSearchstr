@@ -13,8 +13,15 @@ import { getSearchRelay } from '@/lib/searchRelays';
 import { sanitizeUrl } from '@/lib/sanitizeUrl';
 import type { SearchProvider, SearchOptions, ProviderSearchResponse, SearchResult } from './types';
 
-/** Nostr kinds to search. */
-const SEARCH_KINDS = [0, 1, 1063, 30023];
+/**
+ * Nostr kinds to search.
+ * - 0: Profiles
+ * - 1: Notes
+ * - 1063: File metadata (NIP-94)
+ * - 30023: Long-form articles (NIP-23)
+ * - 30818: Wiki articles / Wikifreedia (NIP-54)
+ */
+const SEARCH_KINDS = [0, 1, 1063, 30023, 30818];
 
 /** Convert a Nostr event into a universal SearchResult. */
 function eventToSearchResult(event: NostrEvent): SearchResult {
@@ -49,6 +56,14 @@ function eventToSearchResult(event: NostrEvent): SearchResult {
       result.title = npubShort(event.pubkey);
       result.kind = 'Profile';
     }
+  } else if (event.kind === 30818) {
+    // Wikifreedia / Wiki article (NIP-54)
+    const dTag = getDTag(event) || '';
+    result.title = getTag(event, 'title') || dTag.replace(/-/g, ' ') || 'Wiki Article';
+    result.snippet = getTag(event, 'summary') || truncate(event.content, 250);
+    result.kind = 'Wiki';
+    result.domain = 'wikifreedia.xyz';
+    result.score = 105; // Wiki articles from Nostr get extra priority
   } else if (event.kind === 30023) {
     // Article
     result.title = getTag(event, 'title') || 'Untitled Article';

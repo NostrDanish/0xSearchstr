@@ -15,4 +15,5 @@ export { duckduckgoProvider } from './duckduckgo';
 export { torProvider } from './tor';
 export { wikipediaProvider } from './wikipedia';
 export { hackerNewsProvider } from './hacker-news';
+export { stackOverflowProvider } from './stackoverflow';
 export { ALL_PROVIDERS, getProvidersForSource, getProvider, getAvailableSources } from './registry';

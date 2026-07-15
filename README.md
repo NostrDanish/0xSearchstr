@@ -71,6 +71,7 @@ src/lib/providers/
 ├── duckduckgo.ts     ← DuckDuckGo HTML scraper
 ├── wikipedia.ts      ← MediaWiki API
 ├── hacker-news.ts    ← Algolia HN Search API
+├── stackoverflow.ts  ← StackExchange API
 ├── tor.ts            ← Ahmia.fi .onion search
 ├── registry.ts       ← Provider catalog
 └── index.ts          ← Barrel export
@@ -102,6 +103,7 @@ interface SearchProvider {
 | **DuckDuckGo** | HTML scraper | CORS proxy | Direct DDG fallback when SearXNG is slow |
 | **Wikipedia** | MediaWiki API | Direct (CORS) | No proxy needed |
 | **Hacker News** | Algolia API | Direct (CORS) | Stories with points/comments |
+| **Stack Overflow** | StackExchange API | Direct (CORS) | Questions with votes/answers |
 | **Tor (Ahmia)** | HTML scraping | CORS proxy | Policy-compliant .onion search |
 
 ### Incremental Results
@@ -120,10 +122,11 @@ Results appear as each provider finishes — no waiting for the slowest one.
 | Tab | Sources |
 |-----|---------|
 | **All** | All providers merged + ranked |
-| **Nostr** | Profiles, notes, articles, files |
-| **Web** | SearXNG meta-search |
+| **Nostr** | Profiles, notes, articles, Wikifreedia, files |
+| **Web** | SearXNG + DuckDuckGo meta-search |
 | **Wiki** | Wikipedia articles |
 | **News** | Hacker News stories |
+| **Code** | Stack Overflow questions |
 | **Tor** | .onion hidden services via Ahmia |
 | **I2P** | Eepsite directory links |
 
