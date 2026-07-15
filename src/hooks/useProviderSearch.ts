@@ -1,5 +1,5 @@
 /**
- * Unified search hook — runs all providers in parallel and streams results.
+ * Unified search hook — runs all providers in parallel, streams results, and auto-indexes.
  *
  * Each provider resolves independently so results appear incrementally:
  *   ✔ Nostr (124ms)
