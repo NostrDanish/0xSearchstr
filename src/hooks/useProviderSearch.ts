@@ -171,20 +171,6 @@ export function useProviderSearch({
   const allResults = data?.results ?? [];
   const suggestions = data?.suggestions ?? [];
 
-  // Auto-index: publish results to the 0xSearchstr Nostr cache.
-  const indexedQueryRef = useRef('');
-  useEffect(() => {
-    if (
-      allResults.length > 0 &&
-      query.trim() &&
-      !providers.some((p) => p.status === 'searching') &&
-      indexedQueryRef.current !== query
-    ) {
-      indexedQueryRef.current = query;
-      void indexResults(query, allResults);
-    }
-  }, [allResults, query, providers, indexResults]);
-
   // Reset provider states when query clears.
   const providers = useMemo(() => {
     if (!query.trim()) return [];
@@ -199,6 +185,20 @@ export function useProviderSearch({
 
   const isLoading = providers.some((p) => p.status === 'searching');
   const isEmpty = query.trim().length > 0 && !isLoading && allResults.length === 0;
+
+  // Auto-index: publish results to the 0xSearchstr Nostr cache.
+  const indexedQueryRef = useRef('');
+  useEffect(() => {
+    if (
+      allResults.length > 0 &&
+      query.trim() &&
+      !isLoading &&
+      indexedQueryRef.current !== query
+    ) {
+      indexedQueryRef.current = query;
+      void indexResults(query, allResults);
+    }
+  }, [allResults, query, isLoading, indexResults]);
 
   // Counts per source.
   const counts = useMemo(() => {
