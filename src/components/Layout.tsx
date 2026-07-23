@@ -1,5 +1,5 @@
 import { Link, useLocation } from 'react-router-dom';
-import { Search, Shield, Sun, Moon, Info, Terminal } from 'lucide-react';
+import { Search, Shield, Sun, Moon, Info, Terminal, Server } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { LoginArea } from '@/components/auth/LoginArea';
 import { useTheme } from '@/hooks/useTheme';
@@ -68,6 +68,12 @@ export function Layout({ children, minimal = false }: LayoutProps) {
                 <span className="hidden sm:inline">About</span>
               </Link>
             </Button>
+            <Button variant="ghost" size="sm" asChild className="text-muted-foreground hover:text-foreground">
+              <Link to="/instances">
+                <Server className="w-4 h-4 mr-1.5" />
+                <span className="hidden sm:inline">Instances</span>
+              </Link>
+            </Button>
 
             <Button
               variant="ghost"
@@ -103,6 +109,7 @@ export function Layout({ children, minimal = false }: LayoutProps) {
           <div className="flex items-center gap-4">
             <Link to="/policy" className="hover:text-foreground transition-colors">Content Policy</Link>
             <Link to="/about" className="hover:text-foreground transition-colors">About</Link>
+            <Link to="/instances" className="hover:text-foreground transition-colors">Instances</Link>
             <a
               href="https://shakespeare.diy"
               target="_blank"

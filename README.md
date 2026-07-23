@@ -125,12 +125,30 @@ interface SearchProvider {
 |----------|--------|-----|-------|
 | **Cache Index** | 0xSearchstr Nostr account | WebSocket | Reads previously cached results first |
 | **Nostr** | NIP-50 relays | WebSocket | relay.nostr.band + relay.ditto.pub + 2 more |
-| **SearXNG** | 6 public instances | CORS proxy | DDG, Brave, Wikipedia, and dozens more |
+| **SearXNG** | Dynamic instance pool | CORS proxy | DDG, Brave, Wikipedia, and dozens more |
 | **DuckDuckGo** | HTML scraper | CORS proxy | Direct DDG fallback when SearXNG is slow |
 | **Wikipedia** | MediaWiki API | Direct (CORS) | No proxy needed |
 | **Hacker News** | Algolia API | Direct (CORS) | Stories with points/comments |
 | **Stack Overflow** | StackExchange API | Direct (CORS) | Questions with votes/answers |
 | **Tor (Ahmia)** | HTML scraping | CORS proxy | Policy-compliant .onion search |
+
+### Dynamic SearXNG Instance Pool (searxist-style)
+
+Instead of a hardcoded instance list, the SearXNG provider uses a **self-healing dynamic pool** (inspired by [searxist](https://codeberg.org/searxist)):
+
+```
+┌── Tier 1: Custom ──────┐   Your self-hosted / trusted instances (always first)
+├── Tier 2: Discovered ──┤   Live from searx.space, privacy-filtered:
+│                        │     • no analytics  • clearnet  • ≥80% search success
+└── Tier 3: Seeds ───────┘   Hardcoded bootstrap fallback
+```
+
+- **Auto-discovery** — the pool refreshes from [searx.space](https://searx.space) every 24h, client-side
+- **Health tracking** — per-instance success/failure/latency stats in localStorage; failing instances sink, fast ones rise
+- **Self-hosting friendly** — add your own instance at `/instances` and it runs first on every search
+- **Zero backend** — discovery, health, and ranking all happen in the browser
+
+Manage the pool at [`/instances`](https://0xSearchstr.shakespeare.wtf/instances).
 
 ### Incremental Results
 

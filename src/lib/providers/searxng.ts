@@ -4,32 +4,28 @@
  * Aggregates web results from DuckDuckGo, Brave, Wikipedia, and dozens
  * of other engines. Races multiple instances in parallel for speed,
  * with sequential failover if needed.
+ *
+ * Instance pool is DYNAMIC (searxist-style):
+ *   - User-added custom instances always go first
+ *   - Public instances are auto-discovered from searx.space (privacy-filtered)
+ *   - Per-instance health tracking demotes failing instances
+ *   - Hardcoded seeds remain as a bootstrap fallback
  */
 import type { SearchProvider, SearchOptions, ProviderSearchResponse, SearchResult } from './types';
+import {
+  getInstanceUrls,
+  refreshDiscoveredInstances,
+  recordInstanceSuccess,
+  recordInstanceFailure,
+} from '@/lib/searxngInstances';
 
 const CORS_PROXY = 'https://proxy.shakespeare.diy/?url=';
 
-/**
- * Public SearXNG instances with JSON API support.
- * Sourced from searx.space and manually verified.
- * Order matters: first batch is raced in parallel.
- */
-const INSTANCES = [
-  // Batch 1 — raced in parallel
-  'https://search.ononoki.org',
-  'https://baresearch.org',
-  'https://etsi.me',
-  'https://searxng.site',
-  // Batch 2 — sequential fallback
-  'https://search.bus-hit.me',
-  'https://searx.tiekoetter.com',
-  'https://search.sapti.me',
-  'https://ooglester.com',
-  'https://copp.gg',
-];
-
 /** How many instances to race in the first parallel batch. */
 const PARALLEL_BATCH = 4;
+
+/** Cap the sequential fallback so a dead pool doesn't hang the search. */
+const MAX_FALLBACK = 5;
 
 interface RawSearXNGResult {
   title: string;
@@ -85,6 +81,7 @@ async function queryInstance(
 
   const target = `${instanceUrl}/search?${params.toString()}`;
   const proxied = `${CORS_PROXY}${encodeURIComponent(target)}`;
+  const start = performance.now();
 
   try {
     const res = await fetch(proxied, {
@@ -93,11 +90,19 @@ async function queryInstance(
         : AbortSignal.timeout(10000),
       headers: { Accept: 'application/json' },
     });
-    if (!res.ok) return null;
+    if (!res.ok) {
+      recordInstanceFailure(instanceUrl);
+      return null;
+    }
     const data = await res.json() as RawSearXNGResponse;
-    if (!data.results || !Array.isArray(data.results)) return null;
+    if (!data.results || !Array.isArray(data.results)) {
+      recordInstanceFailure(instanceUrl);
+      return null;
+    }
+    recordInstanceSuccess(instanceUrl, Math.round(performance.now() - start));
     return data;
   } catch {
+    recordInstanceFailure(instanceUrl);
     return null;
   }
 }
@@ -112,14 +117,20 @@ export const searxngProvider: SearchProvider = {
 
     const q = query.trim();
 
+    // Kick off (or refresh) instance discovery in the background.
+    // First search uses seeds; subsequent searches use the live pool.
+    void refreshDiscoveredInstances();
+
+    const instances = getInstanceUrls();
+
     // Phase 1: Race the first batch of instances in parallel.
     // First one to return good results wins.
-    const parallelBatch = INSTANCES.slice(0, PARALLEL_BATCH);
+    const parallelBatch = instances.slice(0, PARALLEL_BATCH);
     const raceResult = await raceForResults(parallelBatch, q, signal);
     if (raceResult) return raceResult;
 
     // Phase 2: Sequential fallback through remaining instances.
-    const fallbackBatch = INSTANCES.slice(PARALLEL_BATCH);
+    const fallbackBatch = instances.slice(PARALLEL_BATCH, PARALLEL_BATCH + MAX_FALLBACK);
     for (const instance of fallbackBatch) {
       const data = await queryInstance(instance, q, signal);
       if (data && data.results.length > 0) {
@@ -143,6 +154,8 @@ async function raceForResults(
   query: string,
   signal?: AbortSignal,
 ): Promise<ProviderSearchResponse | null> {
+  if (instances.length === 0) return null;
+
   return new Promise((resolve) => {
     let resolved = false;
     let remaining = instances.length;
