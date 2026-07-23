@@ -1,10 +1,7 @@
 import { useState, useCallback, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useSeoMeta } from '@unhead/react';
-import {
-  Search, Zap, Globe, Shield, Network, Database, ArrowRight,
-  ExternalLink, BookOpen, Newspaper, Code,
-} from 'lucide-react';
+import { Search, Network, ExternalLink } from 'lucide-react';
 
 import { Layout } from '@/components/Layout';
 import { SearchBar } from '@/components/SearchBar';
@@ -16,7 +13,6 @@ import { SearchSkeleton } from '@/components/SearchSkeleton';
 import { Card, CardContent } from '@/components/ui/card';
 import { useProviderSearch } from '@/hooks/useProviderSearch';
 import type { SearchSource } from '@/lib/providers/types';
-import { cn } from '@/lib/utils';
 
 const Index = () => {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -113,37 +109,8 @@ const Index = () => {
             />
           </div>
 
-          <div className="mb-12 motion-safe:animate-in motion-safe:fade-in motion-safe:duration-500 motion-safe:delay-300">
+          <div className="motion-safe:animate-in motion-safe:fade-in motion-safe:duration-500 motion-safe:delay-300">
             <SourceTabs value={source} onChange={handleSourceChange} />
-          </div>
-
-          <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-4 gap-3 w-full max-w-3xl motion-safe:animate-in motion-safe:fade-in motion-safe:duration-700 motion-safe:delay-500">
-            <FeatureCard icon={<Zap className="w-4 h-4 text-nostr" />} label="Nostr" description="Notes + Wiki + Profiles" active />
-            <FeatureCard icon={<Globe className="w-4 h-4 text-clearnet" />} label="Web" description="DDG + SearXNG" active />
-            <FeatureCard icon={<BookOpen className="w-4 h-4 text-foreground/70" />} label="Wiki" description="Wikipedia" active />
-            <FeatureCard icon={<Newspaper className="w-4 h-4 text-foreground/70" />} label="News" description="Hacker News" active />
-            <FeatureCard icon={<Code className="w-4 h-4 text-foreground/70" />} label="Code" description="Stack Overflow" active />
-            <FeatureCard icon={<Shield className="w-4 h-4 text-tor" />} label="Tor" description="Ahmia" active />
-            <FeatureCard icon={<Network className="w-4 h-4 text-i2p" />} label="I2P" description="Directories" active />
-            <FeatureCard icon={<Database className="w-4 h-4 text-primary" />} label="No Backend" description="Client-side only" active />
-          </div>
-
-          <div className="mt-10 max-w-lg text-center motion-safe:animate-in motion-safe:fade-in motion-safe:duration-700 motion-safe:delay-700">
-            <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground/60 flex-wrap">
-              <span className="text-nostr font-medium">Nostr</span>
-              <span className="text-muted-foreground/30">+</span>
-              <span className="text-clearnet font-medium">Web</span>
-              <span className="text-muted-foreground/30">+</span>
-              <span className="font-medium">Wiki</span>
-              <span className="text-muted-foreground/30">+</span>
-              <span className="font-medium">News</span>
-              <span className="text-muted-foreground/30">+</span>
-              <span className="font-medium">Code</span>
-              <span className="text-muted-foreground/30">+</span>
-              <span className="text-tor font-medium">Tor</span>
-              <ArrowRight className="w-3 h-3" />
-              <span>merge + rank</span>
-            </div>
           </div>
         </div>
       </Layout>
@@ -283,30 +250,6 @@ function I2PDirectory({ query }: { query: string }) {
         </div>
       </div>
       <BrowserFallback query={query} />
-    </div>
-  );
-}
-
-/* ─── Feature card ─── */
-function FeatureCard({ icon, label, description, active }: {
-  icon: React.ReactNode;
-  label: string;
-  description: string;
-  active?: boolean;
-}) {
-  return (
-    <div className={cn(
-      'flex flex-col items-center gap-1.5 p-4 rounded-xl border text-center transition-colors',
-      active
-        ? 'border-primary/20 bg-primary/5'
-        : 'border-border/50 bg-card/50',
-    )}>
-      {icon}
-      <span className="text-sm font-medium">{label}</span>
-      <span className={cn(
-        'text-xs',
-        active ? 'text-primary/70' : 'text-muted-foreground/60',
-      )}>{description}</span>
     </div>
   );
 }

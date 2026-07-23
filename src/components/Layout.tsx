@@ -1,10 +1,8 @@
 import { Link, useLocation } from 'react-router-dom';
-import { Search, Shield, Sun, Moon, Info, Terminal, Server } from 'lucide-react';
+import { Search, Settings } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { LoginArea } from '@/components/auth/LoginArea';
-import { useTheme } from '@/hooks/useTheme';
 import { cn } from '@/lib/utils';
-import type { Theme } from '@/contexts/AppContext';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -12,22 +10,9 @@ interface LayoutProps {
   minimal?: boolean;
 }
 
-/** Cycle order for the theme toggle button. */
-const THEME_CYCLE: Theme[] = ['light', 'dark', 'hacker'];
-
-function nextTheme(current: Theme): Theme {
-  const idx = THEME_CYCLE.indexOf(current);
-  return THEME_CYCLE[(idx + 1) % THEME_CYCLE.length];
-}
-
 export function Layout({ children, minimal = false }: LayoutProps) {
-  const { theme, setTheme } = useTheme();
   const location = useLocation();
-
   const isHome = location.pathname === '/';
-  const resolvedTheme = theme === 'system'
-    ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
-    : theme;
 
   return (
     <div className="min-h-screen flex flex-col bg-background">
@@ -56,35 +41,15 @@ export function Layout({ children, minimal = false }: LayoutProps) {
                 </Link>
               </Button>
             )}
-            <Button variant="ghost" size="sm" asChild className="text-muted-foreground hover:text-foreground">
-              <Link to="/policy">
-                <Shield className="w-4 h-4 mr-1.5" />
-                <span className="hidden sm:inline">Policy</span>
-              </Link>
-            </Button>
-            <Button variant="ghost" size="sm" asChild className="text-muted-foreground hover:text-foreground">
-              <Link to="/about">
-                <Info className="w-4 h-4 mr-1.5" />
-                <span className="hidden sm:inline">About</span>
-              </Link>
-            </Button>
-            <Button variant="ghost" size="sm" asChild className="text-muted-foreground hover:text-foreground">
-              <Link to="/instances">
-                <Server className="w-4 h-4 mr-1.5" />
-                <span className="hidden sm:inline">Instances</span>
-              </Link>
-            </Button>
-
             <Button
               variant="ghost"
               size="icon"
+              asChild
               className="h-8 w-8 text-muted-foreground hover:text-foreground"
-              onClick={() => setTheme(nextTheme(resolvedTheme))}
-              aria-label={`Theme: ${resolvedTheme}. Click to switch.`}
             >
-              {resolvedTheme === 'light' && <Sun className="w-4 h-4" />}
-              {resolvedTheme === 'dark' && <Moon className="w-4 h-4" />}
-              {resolvedTheme === 'hacker' && <Terminal className="w-4 h-4" />}
+              <Link to="/settings" aria-label="Settings">
+                <Settings className="w-4 h-4" />
+              </Link>
             </Button>
 
             <LoginArea className="max-w-48" />
@@ -109,7 +74,6 @@ export function Layout({ children, minimal = false }: LayoutProps) {
           <div className="flex items-center gap-4">
             <Link to="/policy" className="hover:text-foreground transition-colors">Content Policy</Link>
             <Link to="/about" className="hover:text-foreground transition-colors">About</Link>
-            <Link to="/instances" className="hover:text-foreground transition-colors">Instances</Link>
             <a
               href="https://shakespeare.diy"
               target="_blank"

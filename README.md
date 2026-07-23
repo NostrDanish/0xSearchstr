@@ -145,10 +145,10 @@ Instead of a hardcoded instance list, the SearXNG provider uses a **self-healing
 
 - **Auto-discovery** — the pool refreshes from [searx.space](https://searx.space) every 24h, client-side
 - **Health tracking** — per-instance success/failure/latency stats in localStorage; failing instances sink, fast ones rise
-- **Self-hosting friendly** — add your own instance at `/instances` and it runs first on every search
+- **Self-hosting friendly** — add your own instance in Settings and it runs first on every search
 - **Zero backend** — discovery, health, and ranking all happen in the browser
 
-Manage the pool at [`/instances`](https://0xSearchstr.shakespeare.wtf/instances).
+Manage the pool at [`/settings`](https://0xSearchstr.shakespeare.wtf/settings).
 
 ### Incremental Results
 

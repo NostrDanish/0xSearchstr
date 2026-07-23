@@ -130,9 +130,9 @@ export default function About() {
             color="text-clearnet"
             features={[
               'Aggregates results from DuckDuckGo, Brave, Wikipedia, and more',
-              'Pool of public instances with automatic failover',
+              'Dynamic instance pool discovered from searx.space, health-tracked and self-healing',
               'Privacy-preserving — no tracking, no user profiling',
-              'Accessed via CORS proxy for browser compatibility',
+              'Add your own instance in Settings',
             ]}
           />
           <SourceCard
