@@ -5,6 +5,10 @@
  * a cache event (kind 30078) to Nostr under the 0xSearchstr bot account.
  * The cache grows with every search across every user.
  *
+ * The schema is identical to 0xPresearchstr's (same kind, d-tag namespace,
+ * t-tags) — only the signer is this app's own key. Readers on either
+ * app trust both signers (INDEXER_PUBKEYS), so the index is one shared pool.
+ *
  * Publishing is fire-and-forget with deduplication:
  * - Same query won't be published more than once per session
  * - Only non-Nostr results are cached (Nostr results are already on relays)
@@ -23,6 +27,9 @@ import { buildCacheEvent, normalizeQuery } from '@/lib/searchIndex';
  * This is the bot account — it's intentionally public.
  * The bot publishes cache events that anyone can read.
  * The nsec is embedded so the indexer works without user login.
+ *
+ * Bot pubkey: 12ad55ad…77d199. Forks: replace this with your own key
+ * and add your pubkey to INDEXER_PUBKEYS in src/lib/searchIndex.ts.
  */
 const BOT_NSEC_HEX = 'e338a5ffca6405297366c1db5cd1bc432db51a26b225792917c1fb39ea8d19db';
 
