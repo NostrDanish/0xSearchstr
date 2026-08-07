@@ -5,6 +5,10 @@
 > Same kinds, same d-tag namespaces, same t-tags. The only per-app difference is **which
 > key signs auto-index cache events**. Readers trust every known indexer pubkey, so the
 > index is one shared pool across all compatible clients.
+>
+> Sibling apps may define their own extensions in the same namespace (e.g. 0xPresearchstr's
+> keyword stakes, `0xsearchstr:stake:*`). Extensions are app-specific and not part of the
+> shared read path documented here.
 
 ## Trusted Indexers
 
@@ -123,46 +127,6 @@ The index is not just a bot cache — any Nostr user can curate it. Community su
 ### Discovery & Filtering
 
 Relays can't full-text search tags, so readers fetch recent events with `{ kinds: [30078], '#t': ['0xsearchstr-submit'], limit: 150 }` and filter client-side (AND-match of query terms across title, description, tags, and URL).
-
----
-
-## Keyword Stakes (kind 30078)
-
-Presearch-style keyword staking, Nostr-native. Instead of staking PRE tokens, a user stakes
-their **identity**: an addressable event binding a normalized keyword to a URL. When a
-search query exactly matches a staked keyword, the stake renders as the top
-"Community Stake" placement.
-
-### Event Structure
-
-```json
-{
-  "kind": 30078,
-  "pubkey": "<staker's pubkey>",
-  "content": "<pitch (shown as the search snippet), max 280 chars>",
-  "tags": [
-    ["d", "0xsearchstr:stake:<normalized-keyword>"],
-    ["t", "0xsearchstr-stake"],
-    ["keyword", "<original keyword text>"],
-    ["title", "<display title>"],
-    ["url", "<target url>"],
-    ["alt", "Keyword stake on \"<keyword>\": <title>"]
-  ]
-}
-```
-
-### Rules
-
-- **Any author may stake** — public UGC, readers do NOT filter by author. Clients MUST validate structure (`d`, `title`, `url` tags required) and apply the same URL allowlist as community submissions.
-- **One stake per keyword per pubkey**: the d-tag is `0xsearchstr:stake:<normalized-keyword>`, so re-staking the same keyword atomically replaces the staker's previous entry.
-- **Exact-match placement**: stakes only surface when the normalized query equals the normalized keyword. No fuzzy matching — placement is predictable and relay queries stay cheap (a single `#d` filter).
-- **Competition**: when multiple pubkeys stake the same keyword, clients rank by recency (newest first) and show at most 3. The schema intentionally leaves room for **zap-weighted ranking** (kind 9735 receipts against the stake event) without a breaking change.
-
-### Query
-
-```json
-{ "kinds": [30078], "#d": ["0xsearchstr:stake:<normalized-query>"], "limit": 25 }
-```
 
 ---
 
