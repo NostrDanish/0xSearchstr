@@ -1,13 +1,20 @@
 /**
- * Auto-indexing hook — publishes search results to Nostr after each search.
+ * Auto-indexing hook — publishes search results to the federated Nostr
+ * index after each search.
  *
- * When a search completes with enough results, this hook publishes
- * a cache event (kind 30078) to Nostr under the 0xSearchstr bot account.
- * The cache grows with every search across every user.
+ * Primary path: the autosigner service (worker.ts) — a Cloudflare Worker
+ * holding the indexer key as a secret. It validates, rate-limits, signs
+ * server-side, and publishes to the index relays. This is what makes the
+ * built-in autosigner safe for multi-user public deployment: no key
+ * material in the browser beyond the public legacy fallback.
+ *
+ * Fallback path: the legacy embedded bot key (also in INDEXER_PUBKEYS),
+ * used when the service is unreachable (static hosting, preview, worker
+ * down) so the shared index keeps growing either way.
  *
  * The schema is identical to 0xPresearchstr's (same kind, d-tag namespace,
- * t-tags) — only the signer is this app's own key. Readers on either
- * app trust both signers (INDEXER_PUBKEYS), so the index is one shared pool.
+ * t-tags) — only the signer differs per app. Readers on either app trust
+ * all indexer keys, so the index is one shared pool.
  *
  * Publishing is fire-and-forget with deduplication:
  * - Same query won't be published more than once per session
@@ -21,26 +28,24 @@ import { NRelay1 } from '@nostrify/nostrify';
 
 import type { SearchResult } from '@/lib/providers/types';
 import { buildCacheEvent, normalizeQuery } from '@/lib/searchIndex';
+import { indexViaService } from '@/lib/indexerService';
 
 /**
- * 0xSearchstr bot nsec (hex secret key).
- * This is the bot account — it's intentionally public.
- * The bot publishes cache events that anyone can read.
- * The nsec is embedded so the indexer works without user login.
- *
- * Bot pubkey: 12ad55ad…77d199. Forks: replace this with your own key
- * and add your pubkey to INDEXER_PUBKEYS in src/lib/searchIndex.ts.
+ * Legacy 0xSearchstr bot nsec (hex secret key) — fallback signer.
+ * Intentionally public: the bot only publishes cache events anyone can read.
+ * Kept so indexing still works when the autosigner service is offline.
+ * Bot pubkey: 12ad55ad…77d199.
  */
-const BOT_NSEC_HEX = 'e338a5ffca6405297366c1db5cd1bc432db51a26b225792917c1fb39ea8d19db';
+const LEGACY_BOT_NSEC_HEX = 'e338a5ffca6405297366c1db5cd1bc432db51a26b225792917c1fb39ea8d19db';
 
-/** Relays to publish cache events to. */
+/** Relays the fallback path publishes cache events to. */
 const PUBLISH_RELAYS = [
   'wss://relay.ditto.pub/',
   'wss://relay.primal.net/',
   'wss://relay.damus.io/',
 ];
 
-/** Relay connection cache. */
+/** Relay connection cache (fallback path). */
 const relayCache = new Map<string, NRelay1>();
 function getRelay(url: string): NRelay1 {
   let relay = relayCache.get(url);
@@ -49,6 +54,28 @@ function getRelay(url: string): NRelay1 {
     relayCache.set(url, relay);
   }
   return relay;
+}
+
+/** Fallback: sign locally with the legacy embedded bot key + publish. */
+async function signAndPublishLocally(eventData: { kind: number; content: string; tags: string[][] }) {
+  const secretKey = hexToBytes(LEGACY_BOT_NSEC_HEX);
+  const signedEvent = finalizeEvent(
+    {
+      kind: eventData.kind,
+      created_at: Math.floor(Date.now() / 1000),
+      tags: eventData.tags,
+      content: eventData.content,
+      pubkey: bytesToHex(getPublicKey(secretKey)),
+    },
+    secretKey,
+  );
+
+  await Promise.allSettled(
+    PUBLISH_RELAYS.map(async (url) => {
+      const relay = getRelay(url);
+      await relay.event(signedEvent);
+    }),
+  );
 }
 
 /**
@@ -67,39 +94,42 @@ export function useSearchIndexer() {
     // Skip if already indexed this session.
     if (indexedRef.current.has(normalized)) return;
 
-    // Build the cache event.
+    // Build the cache payload (returns null when not worth caching).
+    // Reused by the local fallback; the service rebuilds its own event
+    // server-side from the minimal result fields.
     const eventData = buildCacheEvent(query, results);
-    if (!eventData) return; // Not enough results to cache.
+    if (!eventData) return;
 
     // Mark as indexed immediately (optimistic).
     indexedRef.current.add(normalized);
 
-    // Sign and publish in the background (fire-and-forget).
-    try {
-      const secretKey = hexToBytes(BOT_NSEC_HEX);
-      const pubkey = bytesToHex(getPublicKey(secretKey));
-
-      const unsignedEvent = {
-        kind: eventData.kind,
-        created_at: Math.floor(Date.now() / 1000),
-        tags: eventData.tags,
-        content: eventData.content,
-        pubkey,
-      };
-
-      const signedEvent = finalizeEvent(unsignedEvent, secretKey);
-
-      // Publish to all relays in parallel, don't await.
-      void Promise.allSettled(
-        PUBLISH_RELAYS.map(async (url) => {
-          const relay = getRelay(url);
-          await relay.event(signedEvent);
-        }),
+    // Fire-and-forget in the background.
+    void (async () => {
+      // Primary: autosigner service.
+      const serviceOk = await indexViaService(
+        query,
+        results
+          .filter((r) => r.source !== 'nostr' && r.provider !== 'keyword-stake' && r.provider !== 'community')
+          .slice(0, 30)
+          .map((r) => ({
+            title: r.title,
+            url: r.url,
+            snippet: r.snippet,
+            source: r.source,
+            provider: r.provider,
+          })),
       );
-    } catch {
-      // Indexing failure is non-fatal — just means this query won't be cached.
-      indexedRef.current.delete(normalized);
-    }
+
+      if (serviceOk) return;
+
+      // Fallback: legacy embedded key.
+      try {
+        await signAndPublishLocally(eventData);
+      } catch {
+        // Indexing failure is non-fatal — just means this query won't be cached.
+        indexedRef.current.delete(normalized);
+      }
+    })();
   }, []);
 
   return { indexResults };

@@ -134,6 +134,38 @@ The more people use any compatible client, the smarter every client gets. No cra
 
 ---
 
+## Autosigner Service (Cloudflare Worker)
+
+Auto-indexing signs via a server-side Worker so the indexer key never touches a browser. `worker.ts` at the repo root implements:
+
+- `POST /api/index` — validates the payload (whitelists `title`/`url`/`snippet`/`source`/`provider`, http/https only, drops Nostr-native results), rate-limits by IP (KV, 20/min) and dedupes per query (KV, 30 min), signs the kind 30078 cache event with the bot key, publishes to the index relays over WebSocket, and returns which relays confirmed.
+- `GET /api/index` — health/info endpoint (drives **Settings → Autosigner**).
+- `wrangler.jsonc` — Worker config (static assets + KV binding).
+- The event schema mirrors [`src/lib/searchIndex.ts`](src/lib/searchIndex.ts) exactly — **the schema is the federation contract**, shared with 0xPresearchstr and every fork.
+- When the service is unreachable (static hosting, preview), the client falls back to the legacy embedded bot key — indexing never stops.
+
+### Setup
+
+```bash
+npm i -g wrangler && wrangler login
+
+# 1. Create the KV namespace, paste the id into wrangler.jsonc
+wrangler kv namespace create RATE_LIMIT_KV
+
+# 2. Convert the indexer bot's nsec to hex (one time, locally)
+node -e "console.log(Buffer.from(require('nostr-tools/nip19').decode('nsec1…').data).toString('hex'))"
+
+# 3. Store it as a Worker secret
+wrangler secret put INDEXER_NSEC_HEX
+
+# 4. Deploy (app + autosigner, one origin)
+npm run build && wrangler deploy
+```
+
+Deploying through Shakespeare's Cloudflare provider instead of the wrangler CLI? Steps 1–3 still apply on the same Cloudflare account.
+
+---
+
 ## Quick Start
 
 ```bash
