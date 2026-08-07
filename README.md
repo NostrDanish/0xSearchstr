@@ -80,10 +80,11 @@ Direct answers above the result list, no waiting:
 
 ### 🗂 Community Index (curated by Nostr users)
 
-Forked concept from [Nostra Search](https://github.com/nostrasearch/nostrasearch.github.io): the index isn't just a bot cache — **any logged-in Nostr user can submit links** (kind 30078, signed with their own key) via the **Submit** button. Submissions support `https://`, `magnet:`, `ipfs://`, and `.onion` links with automatic content-type detection (Torrent, IPFS, Video, Audio, PDF badges).
+The index isn't just a bot cache — **any logged-in Nostr user can submit links** (kind 30078, signed with their own key) via the **Submit** button. Submissions support `https://`, `magnet:`, `ipfs://`, and `.onion` links with automatic content-type detection (Torrent, IPFS, Video, Audio, PDF badges).
 
 - **URL allowlist** blocks `javascript:`/`data:` at parse time; onion submissions render behind a Tor warning interstitial
-- **Nostra read-interop**: 0xSearchstr also reads Nostra Search's own index (`nostra:index`), including their AES-GCM obfuscated payloads — their community's curation shows up here, attributed as "Nostra Index"
+- **Independent project, credit where due**: 0xSearchstr was built on its own, but the idea of letting *every user* curate the index — not just bots and crawlers — was adopted after we discovered [Nostra Search](https://github.com/nostrasearch/nostrasearch.github.io), a project exploring the same territory. Thanks for the spark. Our implementation is our own, with an improved schema (unique per-URL d-tags fix their one-entry-per-author limitation)
+- **Nostra read-interop**: we also read Nostra Search's own index (`nostra:index`), including their AES-GCM obfuscated payloads — their community's curation shows up here, attributed as "Nostra Index"
 
 ### 🌐 Federation: One Index, Many Clients
 
