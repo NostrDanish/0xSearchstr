@@ -6,6 +6,8 @@
 
 **Nostr:** `npub1z2k4ttglmwgc75c5e856tngnt05mw3hxams4lkr3muf354nh6xvskk2ew6`
 
+**Sister app:** [0xPresearchstr](https://github.com/NostrDanish/0xPresearchstr) — same engine, shared index (see [Federation](#federation-one-index-many-clients))
+
 [![Edit with Shakespeare](https://shakespeare.diy/badge.svg)](https://shakespeare.diy/clone?url=https%3A%2F%2Fgithub.com%2FNostrDanish%2F0xSearchstr.git)
 
 ---
@@ -20,12 +22,14 @@ User Search
  │                                                             │
  │  Nostr (NIP-50)  SearXNG   Wikipedia   Hacker News   Tor   │
  │       │              │          │           │          │    │
- │  Cache Index    DuckDuckGo  Stack Overflow                  │
- │       │              │          │                            │
- │       ▼              ▼          ▼           ▼          ▼    │
+ │  Cache Index    DuckDuckGo  Stack Overflow   Community      │
+ │       │              │          │              Index         │
+ │       ▼              ▼          ▼              ▼             │
  │   SearchResult[] from each provider                         │
  │                                                             │
  └──────────────────────┬──────────────────────────────────────┘
+                        │
+              Instant Answer? (calculator · npub · Wikipedia)
                         │
                    Merge + Deduplicate + Rank
                         │
@@ -35,8 +39,7 @@ User Search
                    Still nothing?
                         │
                         ▼
-                Browser Fallback Links
-          (DDG, Brave, Presearch, Mojeek, Marginalia)
+              Trending cached queries + Browser Fallback Links
 ```
 
 Instead of building another centralized search engine, 0xSearchstr is a **search aggregator** with a plugin-based provider architecture:
@@ -45,20 +48,78 @@ Instead of building another centralized search engine, 0xSearchstr is a **search
 2. **All providers run in parallel** — results stream in as each completes
 3. **Nostr scores highest** — decentralized results are prioritized
 4. **Auto-indexing** — every search publishes results back to Nostr as cache events
-5. **Never leaves you empty** — fallback links to privacy-respecting search engines
+5. **Community-curated** — any Nostr user can submit links to the shared index
+6. **Never leaves you empty** — trending cached queries + fallback links to privacy-respecting search engines
 
 Everything runs in the browser. No backend, no crawler, no tracking.
 
-### Auto-Indexing (Community Cache)
+---
+
+## Features
+
+### 🔦 Honest Privacy (traffic-light indicator)
+
+Every provider is classified by **who can see your query**, and a traffic-light indicator sits next to the search bar at all times:
+
+| Light | Tier | Providers | Who sees the query |
+|-------|------|-----------|--------------------|
+| 🟢 | **Nostr** | Cache Index, Nostr, Community | Relay operators only (query + IP, no account linked) |
+| 🟡 | **Direct** | Wikipedia, Hacker News, Stack Overflow | The API operator (query + IP in standard logs) |
+| 🔴 | **Proxied** | SearXNG, DuckDuckGo, Ahmia | A CORS proxy *and* the destination service |
+
+- **Privacy Mode** (Settings) — one switch to run Nostr-tier providers only. Zero third-party exposure, at the cost of fewer results.
+- The full, honest threat model lives on the [About page](https://0xSearchstr.shakespeare.wtf/about). "No backend" ≠ "no one sees anything" — we document exactly who does.
+
+### ⚡ Instant Answers
+
+Direct answers above the result list, no waiting:
+
+- **Calculator** — `2^10`, `(3+4)*5`, `15% of 80` — safe recursive-descent parser, computed locally, never sent anywhere
+- **Nostr profiles** — paste a bare `npub1…` / `nprofile1…` → rich profile card (avatar, banner, NIP-05, bio)
+- **Wikipedia summaries** — strong title matches render the article's first paragraph + thumbnail (auto-disabled in Privacy Mode)
+
+### 🗂 Community Index (curated by Nostr users)
+
+Forked concept from [Nostra Search](https://github.com/nostrasearch/nostrasearch.github.io): the index isn't just a bot cache — **any logged-in Nostr user can submit links** (kind 30078, signed with their own key) via the **Submit** button. Submissions support `https://`, `magnet:`, `ipfs://`, and `.onion` links with automatic content-type detection (Torrent, IPFS, Video, Audio, PDF badges).
+
+- **URL allowlist** blocks `javascript:`/`data:` at parse time; onion submissions render behind a Tor warning interstitial
+- **Nostra read-interop**: 0xSearchstr also reads Nostra Search's own index (`nostra:index`), including their AES-GCM obfuscated payloads — their community's curation shows up here, attributed as "Nostra Index"
+
+### 🌐 Federation: One Index, Many Clients
+
+The cache protocol (`0xsearchstr:cache:*` d-tags, kind 30078) is **shared with [0xPresearchstr](https://github.com/NostrDanish/0xPresearchstr) and open to any fork**. Each app signs cache events with its own indexer key; readers trust every known indexer:
+
+| App | Indexer pubkey |
+|-----|----------------|
+| 0xSearchstr bot | `12ad55ad1fdb918f5314c9e9a5cd135be9b746e6eee15fd871df131a5677d199` |
+| 0xPresearchstr bot | `e34726ccb624f4bb6aebabdfd9a41f5e160ca97ba2ea13fad8f8ff29a7f84bca` |
+
+A search on 0xPresearchstr warms the cache for 0xSearchstr users and vice versa. Running a fork? Add your pubkey to `INDEXER_PUBKEYS` in [`src/lib/searchIndex.ts`](src/lib/searchIndex.ts) and you join the same index. Full spec in [NIP.md](NIP.md).
+
+### 🔍 Explore the Index
+
+[`/explore`](https://0xSearchstr.shakespeare.wtf/explore) turns the cache into discoverable content: trending queries from all federated indexers, result counts, and aggregate stats. Every search becomes content. The hero page and empty states surface trending queries too — you're never left with a dead end.
+
+### ⌨️ Quality of Life
+
+- **OpenSearch** — add 0xSearchstr as a browser search engine (`/opensearch.xml`)
+- **Keyboard shortcuts** — `Ctrl+K` / `Cmd+K` or `/` focuses the search bar from anywhere
+- **Shareable searches** — `?q=query&source=web` URL params
+- **Smart snippets** — Nostr notes show the relevant window around your query terms (Google-style), not just the note head; hashtag/link-stuffed spam is filtered out
+- **Graceful degradation** — a failing provider shows a muted "skipped" state instead of a red error when others delivered
+
+---
+
+## Auto-Indexing (Community Cache)
 
 The killer feature: **every search grows the index.**
 
-When you search, results from web providers get published as Nostr events (kind 30078) under the 0xSearchstr bot account. Next time *anyone* searches the same query — results come from Nostr instantly, no external API call needed.
+When you search, results from web providers get published as Nostr events (kind 30078) under this app's indexer account. Next time *anyone* — on any compatible client — searches the same query, results come from Nostr instantly, no external API call needed.
 
 ```
 Search "best monero wallet"
        │
-       ├─→ Check Nostr cache (0xSearchstr index)
+       ├─→ Check Nostr cache (federated index, all trusted indexers)
        │     └─→ Cache HIT? → instant results
        │
        ├─→ Run all providers in parallel
@@ -68,7 +129,7 @@ Search "best monero wallet"
              └─→ Next user gets instant cache hit
 ```
 
-The more people use 0xSearchstr, the smarter it gets. No crawler. No database. Just Nostr.
+The more people use any compatible client, the smarter every client gets. No crawler. No database. Just Nostr.
 
 ---
 
@@ -89,9 +150,10 @@ Open `http://localhost:8080` and search.
 
 ```
 src/lib/providers/
-├── types.ts          ← SearchResult, SearchProvider interface
-├── cached-index.ts   ← 0xSearchstr's own Nostr cache (reads first!)
+├── types.ts          ← SearchResult, SearchProvider interface (privacy tiers!)
+├── cached-index.ts   ← Federated Nostr cache (reads first, trusts all indexers)
 ├── nostr.ts          ← NIP-50 relay search
+├── community.ts      ← Community-curated index (+ Nostra Search interop)
 ├── searxng.ts        ← SearXNG meta-search with failover
 ├── duckduckgo.ts     ← DuckDuckGo HTML scraper
 ├── wikipedia.ts      ← MediaWiki API
@@ -115,22 +177,29 @@ interface SearchProvider {
   id: string;
   name: string;
   source: SearchSource;
+  /** Extra tabs this provider also runs under (e.g. community runs under 'tor' too) */
+  additionalSources?: SearchSource[];
+  /** Privacy tier — who can observe the query. Drives the traffic-light + Privacy Mode. */
+  privacy: 'nostr' | 'direct' | 'proxied';
+  /** Honest one-liner about who sees the query (shown in the privacy popover). */
+  privacyNote: string;
   search(options: SearchOptions): Promise<ProviderSearchResponse>;
 }
 ```
 
 ### Live Providers
 
-| Provider | Source | API | Notes |
-|----------|--------|-----|-------|
-| **Cache Index** | 0xSearchstr Nostr account | WebSocket | Reads previously cached results first |
-| **Nostr** | NIP-50 relays | WebSocket | relay.nostr.band + relay.ditto.pub + 2 more |
-| **SearXNG** | Dynamic instance pool | CORS proxy | DDG, Brave, Wikipedia, and dozens more |
-| **DuckDuckGo** | HTML scraper | CORS proxy | Direct DDG fallback when SearXNG is slow |
-| **Wikipedia** | MediaWiki API | Direct (CORS) | No proxy needed |
-| **Hacker News** | Algolia API | Direct (CORS) | Stories with points/comments |
-| **Stack Overflow** | StackExchange API | Direct (CORS) | Questions with votes/answers |
-| **Tor (Ahmia)** | HTML scraping | CORS proxy | Policy-compliant .onion search |
+| Provider | Source | API | Privacy | Notes |
+|----------|--------|-----|---------|-------|
+| **Cache Index** | Federated Nostr index | WebSocket | 🟢 Nostr | Reads previously cached results first |
+| **Nostr** | NIP-50 relays | WebSocket | 🟢 Nostr | 4 default search relays + user customs |
+| **Community** | Nostr kind 30078 | WebSocket | 🟢 Nostr | User-submitted links + Nostra Search index |
+| **SearXNG** | Dynamic instance pool | CORS proxy | 🔴 Proxied | DDG, Brave, Wikipedia, and dozens more |
+| **DuckDuckGo** | HTML scraper | CORS proxy | 🔴 Proxied | Direct DDG fallback when SearXNG is slow |
+| **Wikipedia** | MediaWiki API | Direct (CORS) | 🟡 Direct | No proxy needed |
+| **Hacker News** | Algolia API | Direct (CORS) | 🟡 Direct | Stories with points/comments |
+| **Stack Overflow** | StackExchange API | Direct (CORS) | 🟡 Direct | Questions with votes/answers |
+| **Tor (Ahmia)** | HTML scraping | CORS proxy | 🔴 Proxied | Policy-compliant .onion search |
 
 ### Dynamic SearXNG Instance Pool (searxist-style)
 
@@ -144,11 +213,16 @@ Instead of a hardcoded instance list, the SearXNG provider uses a **self-healing
 ```
 
 - **Auto-discovery** — the pool refreshes from [searx.space](https://searx.space) every 24h, client-side
-- **Health tracking** — per-instance success/failure/latency stats in localStorage; failing instances sink, fast ones rise
+- **Quality-aware health tracking** — per-instance success/failure/latency **and result-count** stats (EMA) in localStorage; failing or thin instances sink, fast and complete ones rise
 - **Self-hosting friendly** — add your own instance in Settings and it runs first on every search
 - **Zero backend** — discovery, health, and ranking all happen in the browser
 
-Manage the pool at [`/settings`](https://0xSearchstr.shakespeare.wtf/settings).
+### Relay Management
+
+Two layers, both manageable at [`/settings`](https://0xSearchstr.shakespeare.wtf/settings):
+
+- **Your Relays (NIP-65)** — your personal relay list with read/write flags; publishes kind 10002 when logged in. Defaults to the 0xSearchstr app relays for new users.
+- **Search Relays (NIP-50)** — the pool that powers Nostr search + the community index. Our four defaults are pinned; add your own (e.g. a self-hosted NIP-50 relay), and use the built-in latency tester to check reachability and round-trip times.
 
 ### Incremental Results
 
@@ -167,11 +241,11 @@ Results appear as each provider finishes — no waiting for the slowest one.
 |-----|---------|
 | **All** | All providers merged + ranked |
 | **Nostr** | Profiles, notes, articles, Wikifreedia, files |
-| **Web** | SearXNG + DuckDuckGo meta-search |
+| **Web** | Community index, SearXNG + DuckDuckGo meta-search, cache |
 | **Wiki** | Wikipedia articles |
 | **News** | Hacker News stories |
 | **Code** | Stack Overflow questions |
-| **Tor** | .onion hidden services via Ahmia |
+| **Tor** | .onion hidden services via Ahmia + curated community onion links |
 | **I2P** | Eepsite directory links |
 
 ---
@@ -195,6 +269,12 @@ docker compose up -d
 ```
 
 See the [backend README](backend/) and [Content Policy](CONTRIBUTING.md) for details.
+
+---
+
+## Protocol Spec
+
+All custom event schemas — the federated cache, community submissions, trusted indexer list, and Nostra Search interop — are documented in [NIP.md](NIP.md).
 
 ---
 
