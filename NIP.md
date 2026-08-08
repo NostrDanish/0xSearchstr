@@ -1,5 +1,13 @@
 # 0xSearchstr Custom Event Schemas
 
+> **Shared document protocol:** the interoperable **web document index** has moved
+> to its own dedicated, app-independent specification —
+> **[docs/SEARCH_INDEX_PROTOCOL.md](docs/SEARCH_INDEX_PROTOCOL.md)** (kind **39697**,
+> one addressable event per indexed URL, per-device indexer identities, no query
+> leakage). New indexing writes use that protocol; this file now documents the
+> **legacy** 0xsearchstr-specific schemas (query cache, community submissions,
+> Nostra interop), which remain readable for backward compatibility.
+>
 > **Federation note:** these schemas are the shared **`0xsearchstr` protocol** — originally
 > defined by 0xSearchstr, implemented identically by 0xPresearchstr, and open to any fork.
 > Same kinds, same d-tag namespaces, same t-tags. The only per-app difference is **which
@@ -24,7 +32,10 @@ Running a fork with your own auto-indexing signer? Add your pubkey to
 
 ---
 
-## Search Cache (kind 30078)
+## Search Cache (kind 30078) — LEGACY
+
+> **Deprecated for new writes.** Kept for backward-compatible reads. New
+> document indexing uses kind 39697 (see docs/SEARCH_INDEX_PROTOCOL.md).
 
 0xSearchstr uses **kind 30078** (NIP-78 Application-specific Data) to cache search results on Nostr.
 
