@@ -8,6 +8,7 @@
  */
 import type { SearchProvider, SearchSource } from './types';
 import { cachedIndexProvider } from './cached-index';
+import { webIndexProvider } from './web-index';
 import { nostrProvider } from './nostr';
 import { communityProvider } from './community';
 import { searxngProvider } from './searxng';
@@ -20,11 +21,13 @@ import { stackOverflowProvider } from './stackoverflow';
 /**
  * All registered search providers, in priority order.
  *
- * The cached-index provider runs first — if the query was searched before,
- * results come from Nostr instantly. All other providers still run in parallel,
- * and their results get merged + deduped with the cache.
+ * The cached-index + web-index providers run first — if the query (or the
+ * pages it surfaces) were indexed before, results come from Nostr instantly.
+ * All other providers still run in parallel, and their results get merged +
+ * deduped with the index.
  */
 export const ALL_PROVIDERS: SearchProvider[] = [
+  webIndexProvider,
   cachedIndexProvider,
   nostrProvider,
   communityProvider,
