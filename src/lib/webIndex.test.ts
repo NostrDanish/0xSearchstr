@@ -1,6 +1,5 @@
 import { describe, it, expect } from 'vitest';
 import { finalizeEvent, generateSecretKey, getPublicKey, verifyEvent } from 'nostr-tools/pure';
-import { bytesToHex } from '@noble/hashes/utils';
 
 import {
   WEB_INDEX_KIND,
@@ -136,7 +135,7 @@ describe('buildIndexEvent', () => {
     const sk = generateSecretKey();
     const template = (await buildIndexEvent(input))!;
     const signed = finalizeEvent(
-      { ...template, created_at: Math.floor(Date.now() / 1000), pubkey: bytesToHex(getPublicKey(sk)) },
+      { ...template, created_at: Math.floor(Date.now() / 1000), pubkey: getPublicKey(sk) },
       sk,
     );
     expect(verifyEvent(signed)).toBe(true);
@@ -158,7 +157,7 @@ describe('parseIndexEvent', () => {
         created_at: 1754650000,
         tags: overrides.tags ?? template.tags,
         content: overrides.content ?? template.content,
-        pubkey: bytesToHex(getPublicKey(sk)),
+        pubkey: getPublicKey(sk),
       },
       sk,
     );

@@ -20,12 +20,19 @@
  * federated sister app keep their warm cache until they migrate.
  */
 import { useCallback, useRef } from 'react';
-import { getPublicKey, finalizeEvent } from 'nostr-tools/pure';
-import { bytesToHex, hexToBytes } from '@noble/hashes/utils';
+import { finalizeEvent } from 'nostr-tools/pure';
 import { NRelay1, type NostrEvent } from '@nostrify/nostrify';
 
+/* Local hex helpers — avoid bundler ambiguity around @noble/hashes subpath
+ * resolution (the identity module does the same). */
+function hexToBytes(hex: string): Uint8Array {
+  const bytes = new Uint8Array(hex.length / 2);
+  for (let i = 0; i < bytes.length; i++) bytes[i] = parseInt(hex.slice(i * 2, i * 2 + 2), 16);
+  return bytes;
+}
+
 import type { SearchResult } from '@/lib/providers/types';
-import { buildCacheEvent, normalizeQuery } from '@/lib/searchIndex';
+import { buildCacheEvent, normalizeQuery, SEARCHSTR_INDEX_PUBKEY } from '@/lib/searchIndex';
 import { indexViaService } from '@/lib/indexerService';
 import { getIndexerIdentity } from '@/lib/indexerIdentity';
 import { buildIndexEvent, normalizeIndexUrl, observationFromResult } from '@/lib/webIndex';
@@ -72,13 +79,14 @@ async function publishEvent(signedEvent: NostrEvent) {
 /** Legacy path: sign the query-cache event with the embedded bot key. */
 async function signAndPublishLegacyCache(eventData: { kind: number; content: string; tags: string[][] }) {
   const secretKey = hexToBytes(LEGACY_BOT_NSEC_HEX);
+  // The bot's pubkey is a known constant (see searchIndex.ts) — no derivation needed.
   const signedEvent = finalizeEvent(
     {
       kind: eventData.kind,
       created_at: Math.floor(Date.now() / 1000),
       tags: eventData.tags,
       content: eventData.content,
-      pubkey: bytesToHex(getPublicKey(secretKey)),
+      pubkey: SEARCHSTR_INDEX_PUBKEY,
     },
     secretKey,
   );
@@ -129,8 +137,9 @@ export function useSearchIndexer() {
         if (normalized) indexedDocsRef.current.add(normalized);
       }
 
-      const secretKey = hexToBytes(getIndexerIdentity().secretHex);
-      const pubkeyHex = bytesToHex(getPublicKey(secretKey));
+      const identity = getIndexerIdentity();
+      const secretKey = hexToBytes(identity.secretHex);
+      const pubkeyHex = identity.pubkeyHex;
 
       for (const input of observations) {
         try {

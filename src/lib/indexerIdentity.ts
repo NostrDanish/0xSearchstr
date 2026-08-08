@@ -23,8 +23,23 @@
  * Relay operators and network observers can still see IP/timing.
  */
 import { generateSecretKey, getPublicKey } from 'nostr-tools/pure';
-import { bytesToHex, hexToBytes } from '@noble/hashes/utils';
 import { nip19 } from 'nostr-tools';
+
+/* Local hex <-> bytes helpers (no external dependency ambiguity in bundlers). */
+
+function hexToBytes(hex: string): Uint8Array {
+  const bytes = new Uint8Array(hex.length / 2);
+  for (let i = 0; i < bytes.length; i++) {
+    bytes[i] = parseInt(hex.slice(i * 2, i * 2 + 2), 16);
+  }
+  return bytes;
+}
+
+function bytesToHex(bytes: Uint8Array): string {
+  let out = '';
+  for (const b of bytes) out += b.toString(16).padStart(2, '0');
+  return out;
+}
 
 /** localStorage key for the device indexer secret (hex). */
 const LS_INDEXER_SECRET = 'sip:indexer:secret';
@@ -61,8 +76,17 @@ function writeStored(secretHex: string): void {
   }
 }
 
+/** Generate a fresh secret key as 64-char hex, robust to lib return type. */
+function newSecretHex(): string {
+  const sk = generateSecretKey();
+  return typeof sk === 'string' ? sk.toLowerCase() : bytesToHex(sk as Uint8Array);
+}
+
 function toIdentity(secretHex: string, fresh: boolean): IndexerIdentity {
-  const pubkeyHex = bytesToHex(getPublicKey(hexToBytes(secretHex)));
+  // getPublicKey accepts the 32-byte secret; it returns hex in this nostr-tools
+  // version, but guard against a byte-array return either way.
+  const pub = getPublicKey(hexToBytes(secretHex));
+  const pubkeyHex = typeof pub === 'string' ? pub : bytesToHex(pub as Uint8Array);
   return {
     secretHex,
     pubkeyHex,
@@ -78,9 +102,16 @@ function toIdentity(secretHex: string, fresh: boolean): IndexerIdentity {
  */
 export function getIndexerIdentity(): IndexerIdentity {
   const existing = readStored();
-  if (existing) return toIdentity(existing, false);
+  if (existing) {
+    try {
+      return toIdentity(existing, false);
+    } catch {
+      // Stored key failed to derive (corrupted / lib mismatch) — fall through
+      // to generating a fresh identity rather than crashing the page.
+    }
+  }
 
-  const secretHex = bytesToHex(generateSecretKey());
+  const secretHex = newSecretHex();
   writeStored(secretHex);
   return toIdentity(secretHex, true);
 }
@@ -91,7 +122,7 @@ export function getIndexerIdentity(): IndexerIdentity {
  * reputation/history carries over. The old key is discarded.
  */
 export function regenerateIndexerIdentity(): IndexerIdentity {
-  const secretHex = bytesToHex(generateSecretKey());
+  const secretHex = newSecretHex();
   writeStored(secretHex);
   return toIdentity(secretHex, true);
 }
