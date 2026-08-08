@@ -22,8 +22,8 @@ User Search
  │                                                             │
  │  Nostr (NIP-50)  SearXNG   Wikipedia   Hacker News   Tor   │
  │       │              │          │           │          │    │
- │  Cache Index    DuckDuckGo  Stack Overflow   Community      │
- │       │              │          │              Index         │
+ │  Web Index     DuckDuckGo  Stack Overflow   Community      │
+ │  Cache Index        │          │              Index         │
  │       ▼              ▼          ▼              ▼             │
  │   SearchResult[] from each provider                         │
  │                                                             │
@@ -47,7 +47,7 @@ Instead of building another centralized search engine, 0xSearchstr is a **search
 1. **Every source is a provider** — each returns a universal `SearchResult[]`
 2. **All providers run in parallel** — results stream in as each completes
 3. **Nostr scores highest** — decentralized results are prioritized
-4. **Auto-indexing** — every search publishes results back to Nostr as cache events
+4. **Auto-indexing** — every search publishes discovered pages back to Nostr as document observations (never the query)
 5. **Community-curated** — any Nostr user can submit links to the shared index
 6. **Never leaves you empty** — trending cached queries + fallback links to privacy-respecting search engines
 
@@ -88,18 +88,17 @@ The index isn't just a bot cache — **any logged-in Nostr user can submit links
 
 ### 🌐 Federation: One Index, Many Clients
 
-The cache protocol (`0xsearchstr:cache:*` d-tags, kind 30078) is **shared with [0xPresearchstr](https://github.com/NostrDanish/0xPresearchstr) and open to any fork**. Each app signs cache events with its own indexer key; readers trust every known indexer:
+The **Search Index Protocol** (kind 39697, [spec](docs/SEARCH_INDEX_PROTOCOL.md)) is **shared with [0xPresearchstr](https://github.com/NostrDanish/0xPresearchstr) and open to any fork or third-party engine**. Every browser is its own indexer — there is no central signing key:
 
-| App | Indexer pubkey |
-|-----|----------------|
-| 0xSearchstr bot | `12ad55ad1fdb918f5314c9e9a5cd135be9b746e6eee15fd871df131a5677d199` |
-| 0xPresearchstr bot | `e34726ccb624f4bb6aebabdfd9a41f5e160ca97ba2ea13fad8f8ff29a7f84bca` |
+- **Per-device identity** — each browser generates its own indexer keypair on first use (Settings → Indexing). Pseudonymous, replaceable, exportable.
+- **Independent observations** — when indexer A and indexer B both see `example.com`, they publish separate events with the *same* `d` tag. Search nodes count distinct indexers per document — "7 independent indexers saw this page."
+- **Any relay works** — plain Nostr filters (`#d`, `#t`) on ordinary relays; NIP-50 is an optional acceleration, never a requirement.
 
-A search on 0xPresearchstr warms the cache for 0xSearchstr users and vice versa. Running a fork? Add your pubkey to `INDEXER_PUBKEYS` in [`src/lib/searchIndex.ts`](src/lib/searchIndex.ts) and you join the same index. Full spec in [NIP.md](NIP.md).
+The legacy query cache (kind 30078, `0xsearchstr:cache:*`) remains federated with 0xPresearchstr during migration — readers trust both bot pubkeys, and old clients keep a warm cache. Full legacy spec in [NIP.md](NIP.md).
 
 ### 🔍 Explore the Index
 
-[`/explore`](https://0xSearchstr.shakespeare.wtf/explore) turns the cache into discoverable content: trending queries from all federated indexers, result counts, and aggregate stats. Every search becomes content. The hero page and empty states surface trending queries too — you're never left with a dead end.
+[`/explore`](https://0xSearchstr.shakespeare.wtf/explore) turns the index into discoverable content: **recently indexed pages** (with independent-indexer counts) plus trending cached queries, result counts, and aggregate stats. Every search becomes content. The hero page and empty states surface trending queries too — you're never left with a dead end.
 
 ### ⌨️ Quality of Life
 
@@ -189,7 +188,8 @@ Open `http://localhost:8080` and search.
 ```
 src/lib/providers/
 ├── types.ts          ← SearchResult, SearchProvider interface (privacy tiers!)
-├── cached-index.ts   ← Federated Nostr cache (reads first, trusts all indexers)
+├── web-index.ts      ← Shared web index — SIP-01 kind 39697 observations (reads first)
+├── cached-index.ts   ← Legacy federated query cache (kind 30078, read for compatibility)
 ├── nostr.ts          ← NIP-50 relay search
 ├── community.ts      ← Community-curated index (+ Nostra Search interop)
 ├── searxng.ts        ← SearXNG meta-search with failover
@@ -200,6 +200,10 @@ src/lib/providers/
 ├── tor.ts            ← Ahmia.fi .onion search
 ├── registry.ts       ← Provider catalog
 └── index.ts          ← Barrel export
+
+src/lib/
+├── webIndex.ts        ← SIP-01 protocol: URL normalization, event build/parse/validate
+└── indexerIdentity.ts ← Per-device anonymous indexer keypair (generate/export/regenerate)
 ```
 
 ### Adding a Provider
@@ -229,7 +233,8 @@ interface SearchProvider {
 
 | Provider | Source | API | Privacy | Notes |
 |----------|--------|-----|---------|-------|
-| **Cache Index** | Federated Nostr index | WebSocket | 🟢 Nostr | Reads previously cached results first |
+| **Web Index** | Nostr kind 39697 | WebSocket | 🟢 Nostr | Shared document observations from all indexers (SIP-01) |
+| **Cache Index** | Federated Nostr index | WebSocket | 🟢 Nostr | Legacy query cache, still read for compatibility |
 | **Nostr** | NIP-50 relays | WebSocket | 🟢 Nostr | 4 default search relays + user customs |
 | **Community** | Nostr kind 30078 | WebSocket | 🟢 Nostr | User-submitted links + Nostra Search index |
 | **SearXNG** | Dynamic instance pool | CORS proxy | 🔴 Proxied | DDG, Brave, Wikipedia, and dozens more |
