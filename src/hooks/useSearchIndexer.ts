@@ -1,25 +1,23 @@
 /**
- * Auto-indexing hook — publishes search results to the federated Nostr
- * index after each search.
+ * Auto-indexing hook — contributes useful web results discovered during
+ * searches to the shared Nostr web index (Search Index Protocol, SIP-01).
  *
- * Primary path: the autosigner service (worker.ts) — a Cloudflare Worker
- * holding the indexer key as a secret. It validates, rate-limits, signs
- * server-side, and publishes to the index relays. This is what makes the
- * built-in autosigner safe for multi-user public deployment: no key
- * material in the browser beyond the public legacy fallback.
+ * What it publishes: one kind 39697 addressable event per unique URL,
+ * containing only the page's public metadata (title, description, tags).
  *
- * Fallback path: the legacy embedded bot key (also in INDEXER_PUBKEYS),
- * used when the service is unreachable (static hosting, preview, worker
- * down) so the shared index keeps growing either way.
+ * What it NEVER publishes:
+ *   - the search query (no query text, no correlation between user and URL);
+ *   - the user's personal Nostr identity (events are signed by this device's
+ *     dedicated indexing identity — see src/lib/indexerIdentity.ts);
+ *   - Nostr-native results (they already live on relays).
  *
- * The schema is identical to 0xPresearchstr's (same kind, d-tag namespace,
- * t-tags) — only the signer differs per app. Readers on either app trust
- * all indexer keys, so the index is one shared pool.
+ * Every browser is an independent indexer — there is no central signing key.
+ * Indexer keys are pseudonymous and replaceable; network observers may still
+ * correlate IP/timing (key separation, not network anonymity — spec §14).
  *
- * Publishing is fire-and-forget with deduplication:
- * - Same query won't be published more than once per session
- * - Only non-Nostr results are cached (Nostr results are already on relays)
- * - Events are addressable (d-tag), so newer caches replace older ones
+ * Legacy: the query→results cache (kind 30078 via the autosigner worker or
+ * the embedded fallback key) still runs alongside, so older clients and the
+ * federated sister app keep their warm cache until they migrate.
  */
 import { useCallback, useRef } from 'react';
 import { getPublicKey, finalizeEvent } from 'nostr-tools/pure';
@@ -29,23 +27,28 @@ import { NRelay1 } from '@nostrify/nostrify';
 import type { SearchResult } from '@/lib/providers/types';
 import { buildCacheEvent, normalizeQuery } from '@/lib/searchIndex';
 import { indexViaService } from '@/lib/indexerService';
+import { getIndexerIdentity } from '@/lib/indexerIdentity';
+import { buildIndexEvent, normalizeIndexUrl, observationFromResult } from '@/lib/webIndex';
+import { useAppContext } from '@/hooks/useAppContext';
 
 /**
- * Legacy 0xSearchstr bot nsec (hex secret key) — fallback signer.
- * Intentionally public: the bot only publishes cache events anyone can read.
- * Kept so indexing still works when the autosigner service is offline.
- * Bot pubkey: 12ad55ad…77d199.
+ * Legacy 0xSearchstr bot nsec (hex secret key) — fallback signer for the
+ * LEGACY query cache only. Kept so the old cache keeps working when the
+ * autosigner service is offline. New document indexing never uses it.
  */
 const LEGACY_BOT_NSEC_HEX = 'e338a5ffca6405297366c1db5cd1bc432db51a26b225792917c1fb39ea8d19db';
 
-/** Relays the fallback path publishes cache events to. */
+/** Relays index observations + legacy cache events are published to. */
 const PUBLISH_RELAYS = [
   'wss://relay.ditto.pub/',
   'wss://relay.primal.net/',
   'wss://relay.damus.io/',
 ];
 
-/** Relay connection cache (fallback path). */
+/** Max document observations published per search. */
+const MAX_OBSERVATIONS_PER_SEARCH = 10;
+
+/** Relay connection cache. */
 const relayCache = new Map<string, NRelay1>();
 function getRelay(url: string): NRelay1 {
   let relay = relayCache.get(url);
@@ -56,8 +59,18 @@ function getRelay(url: string): NRelay1 {
   return relay;
 }
 
-/** Fallback: sign locally with the legacy embedded bot key + publish. */
-async function signAndPublishLocally(eventData: { kind: number; content: string; tags: string[][] }) {
+/** Publish a signed event to all index relays (best-effort). */
+async function publishEvent(signedEvent: Parameters<NRelay1['event']>[0]) {
+  await Promise.allSettled(
+    PUBLISH_RELAYS.map(async (url) => {
+      const relay = getRelay(url);
+      await relay.event(signedEvent);
+    }),
+  );
+}
+
+/** Legacy path: sign the query-cache event with the embedded bot key. */
+async function signAndPublishLegacyCache(eventData: { kind: number; content: string; tags: string[][] }) {
   const secretKey = hexToBytes(LEGACY_BOT_NSEC_HEX);
   const signedEvent = finalizeEvent(
     {
@@ -69,13 +82,7 @@ async function signAndPublishLocally(eventData: { kind: number; content: string;
     },
     secretKey,
   );
-
-  await Promise.allSettled(
-    PUBLISH_RELAYS.map(async (url) => {
-      const relay = getRelay(url);
-      await relay.event(signedEvent);
-    }),
-  );
+  await publishEvent(signedEvent);
 }
 
 /**
@@ -83,29 +90,82 @@ async function signAndPublishLocally(eventData: { kind: number; content: string;
  * Returns a function to call after search completes.
  */
 export function useSearchIndexer() {
-  // Track which queries we've already indexed this session.
-  const indexedRef = useRef(new Set<string>());
+  const { config } = useAppContext();
+  const autoIndex = config.autoIndex;
+  // Track which queries (legacy) / URLs (documents) we've indexed this session.
+  const indexedQueriesRef = useRef(new Set<string>());
+  const indexedDocsRef = useRef(new Set<string>());
 
   const indexResults = useCallback(async (query: string, results: SearchResult[]) => {
-    if (!query.trim()) return;
+    if (!query.trim() || !autoIndex) return;
 
+    /* ---------------------------------------------------------- *
+     * 1. Web document observations (SIP-01, device identity)      *
+     * ---------------------------------------------------------- */
+    void (async () => {
+      // Unique, indexable web URLs from this search — deduped by normalized URL.
+      const seen = new Set<string>();
+      const observations = [];
+      for (const result of results) {
+        // Nostr-native results live on relays already; indexing them would
+        // duplicate and strip their event context.
+        if (result.source === 'nostr' || result.provider === 'keyword-stake' || result.provider === 'community') {
+          continue;
+        }
+        const normalized = normalizeIndexUrl(result.url);
+        if (!normalized || seen.has(normalized) || indexedDocsRef.current.has(normalized)) continue;
+        seen.add(normalized);
+
+        const input = observationFromResult(result);
+        if (!input) continue;
+        observations.push(input);
+        if (observations.length >= MAX_OBSERVATIONS_PER_SEARCH) break;
+      }
+      if (observations.length === 0) return;
+
+      // Optimistically mark before async work so repeat searches don't republish.
+      for (const input of observations) {
+        const normalized = normalizeIndexUrl(input.url);
+        if (normalized) indexedDocsRef.current.add(normalized);
+      }
+
+      const secretKey = hexToBytes(getIndexerIdentity().secretHex);
+      const pubkeyHex = bytesToHex(getPublicKey(secretKey));
+
+      for (const input of observations) {
+        try {
+          const template = await buildIndexEvent(input);
+          if (!template) continue;
+          const signedEvent = finalizeEvent(
+            {
+              kind: template.kind,
+              created_at: Math.floor(Date.now() / 1000),
+              tags: template.tags,
+              content: template.content,
+              pubkey: pubkeyHex,
+            },
+            secretKey,
+          );
+          await publishEvent(signedEvent);
+        } catch {
+          // Indexing failure is non-fatal — unmark so a later search can retry.
+          const normalized = normalizeIndexUrl(input.url);
+          if (normalized) indexedDocsRef.current.delete(normalized);
+        }
+      }
+    })();
+
+    /* ---------------------------------------------------------- *
+     * 2. Legacy query cache (kind 30078) — keep old clients warm  *
+     * ---------------------------------------------------------- */
     const normalized = normalizeQuery(query);
+    if (indexedQueriesRef.current.has(normalized)) return;
 
-    // Skip if already indexed this session.
-    if (indexedRef.current.has(normalized)) return;
-
-    // Build the cache payload (returns null when not worth caching).
-    // Reused by the local fallback; the service rebuilds its own event
-    // server-side from the minimal result fields.
     const eventData = buildCacheEvent(query, results);
     if (!eventData) return;
+    indexedQueriesRef.current.add(normalized);
 
-    // Mark as indexed immediately (optimistic).
-    indexedRef.current.add(normalized);
-
-    // Fire-and-forget in the background.
     void (async () => {
-      // Primary: autosigner service.
       const serviceOk = await indexViaService(
         query,
         results
@@ -122,15 +182,13 @@ export function useSearchIndexer() {
 
       if (serviceOk) return;
 
-      // Fallback: legacy embedded key.
       try {
-        await signAndPublishLocally(eventData);
+        await signAndPublishLegacyCache(eventData);
       } catch {
-        // Indexing failure is non-fatal — just means this query won't be cached.
-        indexedRef.current.delete(normalized);
+        indexedQueriesRef.current.delete(normalized);
       }
     })();
-  }, []);
+  }, [autoIndex]);
 
   return { indexResults };
 }
