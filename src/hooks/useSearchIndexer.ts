@@ -22,7 +22,7 @@
 import { useCallback, useRef } from 'react';
 import { getPublicKey, finalizeEvent } from 'nostr-tools/pure';
 import { bytesToHex, hexToBytes } from '@noble/hashes/utils';
-import { NRelay1 } from '@nostrify/nostrify';
+import { NRelay1, type NostrEvent } from '@nostrify/nostrify';
 
 import type { SearchResult } from '@/lib/providers/types';
 import { buildCacheEvent, normalizeQuery } from '@/lib/searchIndex';
@@ -60,7 +60,7 @@ function getRelay(url: string): NRelay1 {
 }
 
 /** Publish a signed event to all index relays (best-effort). */
-async function publishEvent(signedEvent: Parameters<NRelay1['event']>[0]) {
+async function publishEvent(signedEvent: NostrEvent) {
   await Promise.allSettled(
     PUBLISH_RELAYS.map(async (url) => {
       const relay = getRelay(url);

@@ -111,26 +111,31 @@ A search on 0xPresearchstr warms the cache for 0xSearchstr users and vice versa.
 
 ---
 
-## Auto-Indexing (Community Cache)
+## Auto-Indexing (Shared Web Index)
 
 The killer feature: **every search grows the index.**
 
-When you search, results from web providers get published as Nostr events (kind 30078) under this app's indexer account. Next time *anyone* — on any compatible client — searches the same query, results come from Nostr instantly, no external API call needed.
+When you search, useful web results are published to Nostr as **document observations** — one lightweight, addressable event per URL (kind **39697**, [Search Index Protocol](docs/SEARCH_INDEX_PROTOCOL.md)), signed by **this browser's own dedicated indexing identity**. No account, no login, no central signing key — and **your search query is never published**, only the pages' public metadata.
 
 ```
 Search "best monero wallet"
        │
-       ├─→ Check Nostr cache (federated index, all trusted indexers)
-       │     └─→ Cache HIT? → instant results
+       ├─→ Read the shared web index (kind 39697) + legacy cache (kind 30078)
+       │     └─→ HIT? → instant results from Nostr
        │
        ├─→ Run all providers in parallel
        │     └─→ Merge + deduplicate + rank
        │
-       └─→ Publish results back to Nostr (auto-index)
-             └─→ Next user gets instant cache hit
+       └─→ Index the useful pages (auto-index)
+             ├─→ kind 39697 per URL, signed by your device's indexer key
+             └─→ every compatible client can now find those pages
 ```
 
+**Indexing identity:** each browser generates its own keypair on first use (Settings → Indexing). It is pseudonymous, replaceable, exportable, and never linked to your personal Nostr identity. Key separation is guaranteed; network anonymity is not (relays see IP/timing — be honest about that).
+
 The more people use any compatible client, the smarter every client gets. No crawler. No database. Just Nostr.
+
+> **Migration note:** the legacy query→results cache (kind 30078 via the autosigner worker / embedded fallback key) still runs in parallel so 0xPresearchstr and older clients keep a warm cache until they adopt the new protocol.
 
 ---
 
@@ -307,7 +312,9 @@ See the [backend README](backend/) and [Content Policy](CONTRIBUTING.md) for det
 
 ## Protocol Spec
 
-All custom event schemas — the federated cache, community submissions, trusted indexer list, and Nostra Search interop — are documented in [NIP.md](NIP.md).
+The interoperable web-document index is specified in **[docs/SEARCH_INDEX_PROTOCOL.md](docs/SEARCH_INDEX_PROTOCOL.md)** (SIP-01, kind 39697) — designed so an independent developer can implement a compatible indexer, search node, or search engine without reading this codebase.
+
+App-specific legacy schemas — the federated query cache, community submissions, trusted indexer list, and Nostra Search interop — are documented in [NIP.md](NIP.md).
 
 ---
 
