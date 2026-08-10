@@ -2,10 +2,18 @@
  * Web Index provider — searches the shared decentralized web index
  * (Search Index Protocol kind 39697 document observations).
  *
- * Reads recent observations from all search relays, groups by document id
- * (`d` tag), counts independent indexers per document, and matches the
- * query client-side (relays can't full-text search arbitrary tags; NIP-50
- * acceleration can be added per-relay later — spec §13).
+ * Two read strategies run together (spec §15):
+ *
+ *   1. Baseline (every NIP-01 relay): fetch recent kind 39697 events with a
+ *      plain `{ kinds, limit }` filter, match the query client-side.
+ *   2. Acceleration (SIP-01-aware relays, e.g. UNCAGED): a NIP-50 `search`
+ *      filter pushes the query server-side. NIP-50 sanctions `key:value`
+ *      extensions and requires relays to ignore unsupported ones, so this
+ *      is safe to send to stock relays too — they just fall back to their
+ *      default full-text behavior over the events they hold.
+ *
+ * Events from both paths merge by id, group by document (`d` tag), and count
+ * distinct indexer pubkeys per document — the core agreement signal.
  *
  * Any indexer is trusted structurally: events are self-signed observations
  * of public web metadata, validated by parseIndexEvent (URL allowlist,
@@ -19,7 +27,7 @@ import { getSearchRelay } from '@/lib/searchRelays';
 import { WEB_INDEX_KIND, parseIndexEvent, type IndexObservation } from '@/lib/webIndex';
 import type { SearchProvider, SearchOptions, ProviderSearchResponse, SearchResult } from './types';
 
-/** How many recent observations to pull before client-side matching. */
+/** How many recent observations to pull per filter before client-side matching. */
 const FETCH_LIMIT = 300;
 
 /** AND-match across title, description, url, topics. */
@@ -57,31 +65,51 @@ function groupByDocument(observations: IndexObservation[]): Map<string, Document
   return groups;
 }
 
+/** Map a content/observation type to the source tab it belongs to. */
+function sourceForObservation(obs: IndexObservation): SearchResult['source'] {
+  if (obs.network === 'tor') return 'tor';
+  if (obs.network === 'i2p') return 'i2p';
+  return 'web';
+}
+
 export const webIndexProvider: SearchProvider = {
   id: 'web-index',
   name: 'Web Index',
   source: 'web',
+  additionalSources: ['tor', 'i2p'], // network extension tag routes observations to their tabs
   privacy: 'nostr',
   privacyNote: 'Reads the decentralized web index from Nostr relays. Relay operators see the query, but no account is linked.',
 
   async search({ query, signal }: SearchOptions): Promise<ProviderSearchResponse> {
-    if (!query.trim()) return { results: [] };
+    const trimmed = query.trim();
+    if (!trimmed) return { results: [] };
 
-    const filter: NostrFilter = {
+    // Baseline: recent observations, matched client-side (works everywhere).
+    const baselineFilter: NostrFilter = {
       kinds: [WEB_INDEX_KIND],
       limit: FETCH_LIMIT,
     };
+    // Acceleration: NIP-50 server-side search (spec §15). Stock relays ignore
+    // unsupported operators per NIP-50, so this is safe to send anywhere.
+    const searchFilter: NostrFilter & { search?: string } = {
+      kinds: [WEB_INDEX_KIND],
+      search: trimmed,
+      limit: FETCH_LIMIT,
+    };
+
+    const timeout = (ms: number) => AbortSignal.any([signal ?? AbortSignal.timeout(10000), AbortSignal.timeout(ms)]);
 
     const settled = await Promise.allSettled(
-      getSearchRelayUrls().map(async (url) => {
+      getSearchRelayUrls().flatMap((url) => {
         const relay = getSearchRelay(url);
-        return relay.query([filter], {
-          signal: AbortSignal.any([signal ?? AbortSignal.timeout(10000), AbortSignal.timeout(6000)]),
-        });
+        return [
+          relay.query([baselineFilter], { signal: timeout(6000) }),
+          relay.query([searchFilter], { signal: timeout(6000) }),
+        ];
       }),
     );
 
-    // Merge by event id (same event may arrive from multiple relays).
+    // Merge by event id (same event may arrive from multiple relays/filters).
     const events = new Map<string, NostrEvent>();
     for (const r of settled) {
       if (r.status !== 'fulfilled') continue;
@@ -96,7 +124,7 @@ export const webIndexProvider: SearchProvider = {
       .filter((o): o is IndexObservation => o !== null);
 
     const groups = groupByDocument(observations);
-    const terms = query.toLowerCase().split(/\s+/).filter((t) => t.length >= 2);
+    const terms = trimmed.toLowerCase().split(/\s+/).filter((t) => t.length >= 2);
 
     const results: SearchResult[] = [];
     for (const group of groups.values()) {
@@ -110,7 +138,7 @@ export const webIndexProvider: SearchProvider = {
         title: latest.title,
         url: latest.url,
         snippet: latest.description,
-        source: 'web',
+        source: sourceForObservation(latest),
         provider: 'web-index',
         timestamp: latest.observedAt,
         domain: extractDomain(latest.url),

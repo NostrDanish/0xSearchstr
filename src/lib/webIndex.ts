@@ -1,16 +1,17 @@
 /**
  * Search Index Protocol (SIP-01) — reference implementation.
- * Spec: docs/SEARCH_INDEX_PROTOCOL.md
+ * Canonical spec v1.1: https://github.com/NostrDanish/SIP-01
+ * (public/spec/SIP-01.md). Byte-compatible with the §13 test vectors.
  *
  * One addressable event (kind 39697) per indexed web document:
- *   d = "widx:" + sha256(normalized_url)[0:32]   ← URL identity
- *   u = canonical URL
- *   x = sha256(title + "\n" + description)       ← content identity
- *   v = "1"                                      ← schema version
+ *   d = "widx:" + sha256(normalized_url)[0:32]   ← URL identity (§3)
+ *   u = canonical URL (§7 normalization)
+ *   x = sha256(title + "\n" + description)       ← content identity (§8)
+ *   v = "1"                                      ← schema version (§10)
  *   content = { title, description?, image? }
  *
  * The event NEVER contains a search query, a user identity, or anything
- * about who surfaced the page. Indexer identity = the event pubkey.
+ * about who surfaced the page. Indexer identity = the event pubkey (§14).
  */
 import type { NostrEvent } from '@nostrify/nostrify';
 
@@ -25,13 +26,17 @@ export const WEB_INDEX_SCHEMA_VERSION = '1';
 /** d-tag namespace prefix. */
 export const WEB_INDEX_D_PREFIX = 'widx:';
 
-/* Limits (hard caps, spec §6/§7) */
+/* Limits (hard caps, spec §5/§6) */
 const MAX_TITLE_LEN = 300;
 const MAX_DESCRIPTION_LEN = 1000;
 const MAX_IMAGE_LEN = 2048;
 const MAX_URL_LEN = 2048;
+const MAX_ALT_LEN = 1000;
 const MAX_TAGS = 8;
-const MAX_TAG_LEN = 40;
+const MAX_SOURCE_LEN = 100;
+
+/** Topic tag shape per spec §6: lowercase keyword, 1–100 chars. */
+const TOPIC_RE = /^[a-z0-9][a-z0-9-]{0,99}$/;
 
 /** Tracking parameters stripped during normalization (spec §8.5). */
 const TRACKING_PARAMS = new Set([
@@ -111,6 +116,12 @@ export interface IndexObservationInput {
   language?: string;
   published?: number;
   source?: string; // indexer software id, e.g. "0xsearchstr-web/1"
+  /* Extension tags (spec §9.2) — optional, ignored by unaware consumers. */
+  type?: string;     // page | article | repository | video | image | file | …
+  platform?: string; // github | gitlab | youtube | …
+  network?: string;  // clearnet | tor | i2p | …
+  mime?: string;     // e.g. application/pdf
+  country?: string;  // ISO 3166-1 alpha-2, uppercased
 }
 
 export interface UnsignedIndexEvent {
@@ -127,7 +138,7 @@ export async function buildIndexEvent(
   input: IndexObservationInput,
 ): Promise<UnsignedIndexEvent | null> {
   const normalized = normalizeIndexUrl(input.url);
-  if (!normalized) return null;
+  if (!normalized || normalized.length > MAX_URL_LEN) return null;
 
   const title = input.title.trim().slice(0, MAX_TITLE_LEN);
   if (!title) return null;
@@ -138,19 +149,31 @@ export async function buildIndexEvent(
   if (image && !/^https:\/\//i.test(image)) image = ''; // images: https only
 
   const d = await documentId(normalized);
+  // x is computed over the TRUNCATED title/description we actually publish,
+  // so relays can verify it against the content (spec §8 + guide §1.4).
   const x = await contentHash(title, description);
 
+  // Topics: lowercase, keyword-shaped per spec §6, deduped, max 8.
   const topics = (input.tags ?? [])
     .map((t) => t.toLowerCase().trim().replace(/\s+/g, '-'))
-    .filter((t) => t.length > 0 && t.length <= MAX_TAG_LEN)
+    .filter((t) => TOPIC_RE.test(t))
     .filter((t, i, arr) => arr.indexOf(t) === i)
     .slice(0, MAX_TAGS);
 
-  const language = (input.language ?? '').trim().toLowerCase();
+  // Language: ISO 639-1 two-letter shape (spec §6).
+  const langRaw = (input.language ?? '').trim().toLowerCase();
+  const language = /^[a-z]{2}$/.test(langRaw) ? langRaw : '';
 
   const content: Record<string, string> = { title };
   if (description) content.description = description;
   if (image) content.image = image;
+
+  // Keyword-shaped extension values (spec §9.1.5).
+  const kw = (v?: string) => {
+    const s = (v ?? '').trim().toLowerCase();
+    return /^[a-z0-9][a-z0-9_-]{0,49}$/.test(s) ? s : '';
+  };
+  const country = (input.country ?? '').trim().toUpperCase();
 
   const tags: string[][] = [
     ['d', d],
@@ -160,8 +183,15 @@ export async function buildIndexEvent(
     ['x', x],
     ['v', WEB_INDEX_SCHEMA_VERSION],
     ...(input.published ? [['published', String(Math.floor(input.published))] as string[]] : []),
-    ...(input.source ? [['source', input.source.trim().slice(0, 40)] as string[]] : []),
-    ['alt', `Web index observation: ${title}`],
+    ...(input.source ? [['source', input.source.trim().slice(0, MAX_SOURCE_LEN)] as string[]] : []),
+    // Extension tags (§9.2) — all optional.
+    ...(kw(input.type) ? [['type', kw(input.type)] as string[]] : []),
+    ...(kw(input.platform) ? [['platform', kw(input.platform)] as string[]] : []),
+    ...(kw(input.network) ? [['network', kw(input.network)] as string[]] : []),
+    ...(/^[A-Z]{2}$/.test(country) ? [['country', country] as string[]] : []),
+    ...(input.mime && /^[a-z0-9][a-z0-9!#$&^_+-]*\/[a-z0-9][a-z0-9!#$&^_+.-]*$/i.test(input.mime.trim())
+      ? [['mime', input.mime.trim().toLowerCase()] as string[]] : []),
+    ['alt', `Web index observation: ${title}`.slice(0, MAX_ALT_LEN)],
   ];
 
   return { kind: WEB_INDEX_KIND, content: JSON.stringify(content), tags };
@@ -181,6 +211,12 @@ export interface IndexObservation {
   contentHash?: string;
   published?: number;
   source?: string;
+  /* Extension tags (spec §9.2), when present. */
+  type?: string;
+  platform?: string;
+  network?: string;
+  country?: string;
+  mime?: string;
   /** Event created_at — the observation time. */
   observedAt: number;
   /** Indexer pubkey (event author). */
@@ -201,12 +237,18 @@ function getTag(event: NostrEvent, name: string): string | undefined {
 export function parseIndexEvent(event: NostrEvent): IndexObservation | null {
   if (event.kind !== WEB_INDEX_KIND) return null;
 
+  // Required single-occurrence tags (spec §5): exactly one d, u, v, alt.
   const d = getTag(event, 'd');
   const url = getTag(event, 'u');
   const version = getTag(event, 'v');
-  if (!d?.startsWith(WEB_INDEX_D_PREFIX) || !url || version !== WEB_INDEX_SCHEMA_VERSION) {
+  const alt = getTag(event, 'alt');
+  if (
+    !d?.startsWith(WEB_INDEX_D_PREFIX) || !url || !alt ||
+    version !== WEB_INDEX_SCHEMA_VERSION
+  ) {
     return null;
   }
+  if (url.length > MAX_URL_LEN || alt.length > MAX_ALT_LEN) return null;
 
   const normalized = normalizeIndexUrl(url);
   if (!normalized) return null;
@@ -226,10 +268,11 @@ export function parseIndexEvent(event: NostrEvent): IndexObservation | null {
   }
   if (!title) return null;
 
+  // Topics: keep only keyword-shaped ones (spec §6).
   const topics = event.tags
     .filter(([n]) => n === 't')
     .map(([, v]) => v)
-    .filter((v) => v.length > 0 && v.length <= MAX_TAG_LEN)
+    .filter((v) => TOPIC_RE.test(v))
     .slice(0, MAX_TAGS);
 
   const publishedTag = getTag(event, 'published');
@@ -246,6 +289,11 @@ export function parseIndexEvent(event: NostrEvent): IndexObservation | null {
     contentHash: getTag(event, 'x'),
     published: Number.isFinite(published) ? published : undefined,
     source: getTag(event, 'source'),
+    type: getTag(event, 'type'),
+    platform: getTag(event, 'platform'),
+    network: getTag(event, 'network'),
+    country: getTag(event, 'country'),
+    mime: getTag(event, 'mime'),
     observedAt: event.created_at,
     indexer: event.pubkey,
     event,

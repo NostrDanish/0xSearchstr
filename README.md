@@ -88,7 +88,7 @@ The index isn't just a bot cache — **any logged-in Nostr user can submit links
 
 ### 🌐 Federation: One Index, Many Clients
 
-The **Search Index Protocol** (kind 39697, [spec](docs/SEARCH_INDEX_PROTOCOL.md)) is **shared with [0xPresearchstr](https://github.com/NostrDanish/0xPresearchstr) and open to any fork or third-party engine**. Every browser is its own indexer — there is no central signing key:
+The **Search Index Protocol** (kind 39697, canonical spec: **[NostrDanish/SIP-01](https://github.com/NostrDanish/SIP-01)**) is **shared with [0xPresearchstr](https://github.com/NostrDanish/0xPresearchstr), the [UNCAGED Index Relay](https://github.com/NostrDanish/UNCAGED-Index-Relay), the [Crawlstr](https://github.com/NostrDanish/Crwalstr) crawler, and open to any fork or third-party engine**. Every browser is its own indexer — there is no central signing key:
 
 - **Per-device identity** — each browser generates its own indexer keypair on first use (Settings → Indexing). Pseudonymous, replaceable, exportable.
 - **Independent observations** — when indexer A and indexer B both see `example.com`, they publish separate events with the *same* `d` tag. Search nodes count distinct indexers per document — "7 independent indexers saw this page."
@@ -114,7 +114,7 @@ The legacy query cache (kind 30078, `0xsearchstr:cache:*`) remains federated wit
 
 The killer feature: **every search grows the index.**
 
-When you search, useful web results are published to Nostr as **document observations** — one lightweight, addressable event per URL (kind **39697**, [Search Index Protocol](docs/SEARCH_INDEX_PROTOCOL.md)), signed by **this browser's own dedicated indexing identity**. No account, no login, no central signing key — and **your search query is never published**, only the pages' public metadata.
+When you search, useful web results are published to Nostr as **document observations** — one lightweight, addressable event per URL (kind **39697**, [SIP-01](https://github.com/NostrDanish/SIP-01)), signed by **this browser's own dedicated indexing identity**. No account, no login, no central signing key — and **your search query is never published**, only the pages' public metadata.
 
 ```
 Search "best monero wallet"
@@ -317,7 +317,7 @@ See the [backend README](backend/) and [Content Policy](CONTRIBUTING.md) for det
 
 ## Protocol Spec
 
-The interoperable web-document index is specified in **[docs/SEARCH_INDEX_PROTOCOL.md](docs/SEARCH_INDEX_PROTOCOL.md)** (SIP-01, kind 39697) — designed so an independent developer can implement a compatible indexer, search node, or search engine without reading this codebase.
+The interoperable web-document index is specified by **SIP-01** — canonical spec at **[github.com/NostrDanish/SIP-01](https://github.com/NostrDanish/SIP-01)** (kind 39697) — designed so an independent developer can implement a compatible indexer, search node, or search engine without reading this codebase. 0xSearchstr's implementation is byte-compatible with the spec's §13 test vectors (see [docs/SEARCH_INDEX_PROTOCOL.md](docs/SEARCH_INDEX_PROTOCOL.md)).
 
 App-specific legacy schemas — the federated query cache, community submissions, trusted indexer list, and Nostra Search interop — are documented in [NIP.md](NIP.md).
 

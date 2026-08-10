@@ -74,6 +74,43 @@ describe('documentId / contentHash', () => {
   });
 });
 
+/**
+ * Canonical SIP-01 v1.1 test vectors (spec §13).
+ * Byte-compatibility with these is what makes observations deduplicate
+ * across every crawler, relay, and engine in the ecosystem.
+ */
+describe('SIP-01 §13 test vectors', () => {
+  it('§13.1 URL identity vectors', async () => {
+    // Vector 1
+    expect(normalizeIndexUrl('https://example.com/')).toBe('https://example.com/');
+    expect(await documentId('https://example.com/')).toBe('widx:0f115db062b7c0dd030b16878c99dea5');
+
+    // Vector 2: lowercase scheme/host, strip www, drop default port + fragment,
+    // drop tracking param, sort remaining params, strip trailing slash.
+    const v2 = normalizeIndexUrl('HTTPS://WWW.Example.Com:443/page/?b=2&utm_source=x&a=1#top');
+    expect(v2).toBe('https://example.com/page?a=1&b=2');
+    expect(await documentId(v2!)).toBe('widx:f68176b3eb966bd682c3c6eadcc5fe44');
+
+    // Vector 3
+    expect(await documentId('https://example.com/page')).toBe('widx:3641c5f2274c5471278ab5bf1df6d185');
+
+    // Vector 4: path case is preserved.
+    const v4 = normalizeIndexUrl('https://github.com/NostrDanish/Crwalstr');
+    expect(v4).toBe('https://github.com/NostrDanish/Crwalstr');
+    expect(await documentId(v4!)).toBe('widx:cdfd4df8c01d609fc9cdf943afa80197');
+  });
+
+  it('§13.2 content identity vectors', async () => {
+    // Absent description hashes as the empty string.
+    expect(await contentHash('Example', '')).toBe(
+      'e1762f14d9924e37b32f1c81dfd256410af462f5136415c96877efa8c80345d0',
+    );
+    expect(await contentHash('Example Page', 'A page about examples.')).toBe(
+      '2a5cbdf44513f552fb571d6c6de2ddf16c5452b235cc887980b52898fb38e7c1',
+    );
+  });
+});
+
 describe('buildIndexEvent', () => {
   const input = {
     url: 'https://example.com/page?utm_source=x&id=7',

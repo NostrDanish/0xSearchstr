@@ -1,12 +1,14 @@
 # 0xSearchstr Custom Event Schemas
 
-> **Shared document protocol:** the interoperable **web document index** has moved
-> to its own dedicated, app-independent specification —
-> **[docs/SEARCH_INDEX_PROTOCOL.md](docs/SEARCH_INDEX_PROTOCOL.md)** (kind **39697**,
-> one addressable event per indexed URL, per-device indexer identities, no query
-> leakage). New indexing writes use that protocol; this file now documents the
-> **legacy** 0xsearchstr-specific schemas (query cache, community submissions,
-> Nostra interop), which remain readable for backward compatibility.
+> **Shared document protocol:** the interoperable **web document index** is
+> specified by **SIP-01**, now canonically maintained in its own repository —
+> **[github.com/NostrDanish/SIP-01](https://github.com/NostrDanish/SIP-01)**
+> (kind **39697**, one addressable event per indexed URL, per-device indexer
+> identities, no query leakage). 0xSearchstr's implementation of it is
+> documented in [docs/SEARCH_INDEX_PROTOCOL.md](docs/SEARCH_INDEX_PROTOCOL.md).
+> New indexing writes use that protocol; this file now documents the **legacy**
+> 0xsearchstr-specific schemas (query cache, community submissions, Nostra
+> interop), which remain readable for backward compatibility.
 >
 > **Federation note:** these schemas are the shared **`0xsearchstr` protocol** — originally
 > defined by 0xSearchstr, implemented identically by 0xPresearchstr, and open to any fork.
