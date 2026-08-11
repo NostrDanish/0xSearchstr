@@ -1,10 +1,10 @@
 /**
  * Explore page — browse the community search index.
  *
- * Every search anyone runs on 0xSearchstr gets cached to Nostr (kind 30078)
- * under the bot account. This page surfaces that cache as discoverable
- * content: trending queries, recent additions, result counts. Clicking any
- * query runs it instantly — from Nostr, no external API call needed.
+ * The shared web index (kind 39697) grows with every search on any compatible
+ * client, signed by per-device indexer keys. The legacy query cache
+ * (kind 30078, signed by historical indexer bot accounts) is frozen but still
+ * readable. This page surfaces both as discoverable content.
  */
 import { Link } from 'react-router-dom';
 import { useSeoMeta } from '@unhead/react';

@@ -273,7 +273,7 @@ export default function About() {
                 {[
                   'Log, store, or transmit your searches to its own servers (there are none)',
                   'Track users, fingerprint browsers, or set cookies',
-                  'Publish cached results under your identity — the cache is signed by a bot account',
+                  'Publish anything under your identity — index contributions are signed by a dedicated per-device indexing key, never your login',
                   'Run its own crawler or indexing backend',
                 ].map((item) => (
                   <li key={item} className="flex items-start gap-2">

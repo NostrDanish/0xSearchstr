@@ -56,10 +56,10 @@ Results from both paths merge by event id.
 
 ### Legacy compatibility (spec §17)
 
-The kind 30078 query cache (`d: "0xsearchstr:cache:*"`) is frozen legacy data,
-still read and written for compatibility with 0xPresearchstr and older clients
-during migration. New document indexing uses kind 39697 only. There is no flag
-day. See [../NIP.md](../NIP.md) for the legacy schemas.
+The kind 30078 query cache (`d: "0xsearchstr:cache:*"`) is frozen legacy data:
+this client **reads** it (backward compatibility with 0xPresearchstr and older
+deployments) but never writes it. New document indexing uses kind 39697 only.
+There is no flag day. See [../NIP.md](../NIP.md) for the legacy schemas.
 
 ## Verifying this implementation
 

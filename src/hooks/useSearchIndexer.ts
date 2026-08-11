@@ -11,40 +11,30 @@
  *     dedicated indexing identity — see src/lib/indexerIdentity.ts);
  *   - Nostr-native results (they already live on relays).
  *
- * Every browser is an independent indexer — there is no central signing key.
- * Indexer keys are pseudonymous and replaceable; network observers may still
- * correlate IP/timing (key separation, not network anonymity — spec §14).
+ * The ONLY signer here is the built-in per-device indexing identity. There is
+ * no server-side autosigner, no shared embedded key, no NIP-46 bunker — every
+ * browser is an independent indexer (spec §14).
  *
- * Legacy: the query→results cache (kind 30078 via the autosigner worker or
- * the embedded fallback key) still runs alongside, so older clients and the
- * federated sister app keep their warm cache until they migrate.
+ * The legacy kind 30078 query cache is frozen legacy data (spec §17): this
+ * client reads it (cached-index provider) but no longer writes it.
  */
 import { useCallback, useRef } from 'react';
 import { finalizeEvent } from 'nostr-tools/pure';
 import { NRelay1, type NostrEvent } from '@nostrify/nostrify';
 
-/* Local hex helpers — avoid bundler ambiguity around @noble/hashes subpath
+import type { SearchResult } from '@/lib/providers/types';
+import { getIndexerIdentity } from '@/lib/indexerIdentity';
+import { buildIndexEvent, normalizeIndexUrl, observationFromResult } from '@/lib/webIndex';
+import { getSearchRelayUrls } from '@/lib/appRelays';
+import { useAppContext } from '@/hooks/useAppContext';
+
+/* Local hex helper — avoid bundler ambiguity around @noble/hashes subpath
  * resolution (the identity module does the same). */
 function hexToBytes(hex: string): Uint8Array {
   const bytes = new Uint8Array(hex.length / 2);
   for (let i = 0; i < bytes.length; i++) bytes[i] = parseInt(hex.slice(i * 2, i * 2 + 2), 16);
   return bytes;
 }
-
-import type { SearchResult } from '@/lib/providers/types';
-import { buildCacheEvent, normalizeQuery, SEARCHSTR_INDEX_PUBKEY } from '@/lib/searchIndex';
-import { indexViaService } from '@/lib/indexerService';
-import { getIndexerIdentity } from '@/lib/indexerIdentity';
-import { buildIndexEvent, normalizeIndexUrl, observationFromResult } from '@/lib/webIndex';
-import { getSearchRelayUrls } from '@/lib/appRelays';
-import { useAppContext } from '@/hooks/useAppContext';
-
-/**
- * Legacy 0xSearchstr bot nsec (hex secret key) — fallback signer for the
- * LEGACY query cache only. Kept so the old cache keeps working when the
- * autosigner service is offline. New document indexing never uses it.
- */
-const LEGACY_BOT_NSEC_HEX = 'e338a5ffca6405297366c1db5cd1bc432db51a26b225792917c1fb39ea8d19db';
 
 /** Max document observations published per search. */
 const MAX_OBSERVATIONS_PER_SEARCH = 10;
@@ -74,23 +64,6 @@ async function publishEvent(signedEvent: NostrEvent) {
   );
 }
 
-/** Legacy path: sign the query-cache event with the embedded bot key. */
-async function signAndPublishLegacyCache(eventData: { kind: number; content: string; tags: string[][] }) {
-  const secretKey = hexToBytes(LEGACY_BOT_NSEC_HEX);
-  // The bot's pubkey is a known constant (see searchIndex.ts) — no derivation needed.
-  const signedEvent = finalizeEvent(
-    {
-      kind: eventData.kind,
-      created_at: Math.floor(Date.now() / 1000),
-      tags: eventData.tags,
-      content: eventData.content,
-      pubkey: SEARCHSTR_INDEX_PUBKEY,
-    },
-    secretKey,
-  );
-  await publishEvent(signedEvent);
-}
-
 /**
  * Hook: auto-indexes search results to Nostr.
  * Returns a function to call after search completes.
@@ -98,16 +71,13 @@ async function signAndPublishLegacyCache(eventData: { kind: number; content: str
 export function useSearchIndexer() {
   const { config } = useAppContext();
   const autoIndex = config.autoIndex;
-  // Track which queries (legacy) / URLs (documents) we've indexed this session.
-  const indexedQueriesRef = useRef(new Set<string>());
+  // Track which URLs we've indexed this session.
   const indexedDocsRef = useRef(new Set<string>());
 
   const indexResults = useCallback(async (query: string, results: SearchResult[]) => {
     if (!query.trim() || !autoIndex) return;
 
-    /* ---------------------------------------------------------- *
-     * 1. Web document observations (SIP-01, device identity)      *
-     * ---------------------------------------------------------- */
+    // Fire-and-forget in the background.
     void (async () => {
       // Unique, indexable web URLs from this search — deduped by normalized URL.
       const seen = new Set<string>();
@@ -159,40 +129,6 @@ export function useSearchIndexer() {
           const normalized = normalizeIndexUrl(input.url);
           if (normalized) indexedDocsRef.current.delete(normalized);
         }
-      }
-    })();
-
-    /* ---------------------------------------------------------- *
-     * 2. Legacy query cache (kind 30078) — keep old clients warm  *
-     * ---------------------------------------------------------- */
-    const normalized = normalizeQuery(query);
-    if (indexedQueriesRef.current.has(normalized)) return;
-
-    const eventData = buildCacheEvent(query, results);
-    if (!eventData) return;
-    indexedQueriesRef.current.add(normalized);
-
-    void (async () => {
-      const serviceOk = await indexViaService(
-        query,
-        results
-          .filter((r) => r.source !== 'nostr' && r.provider !== 'keyword-stake' && r.provider !== 'community')
-          .slice(0, 30)
-          .map((r) => ({
-            title: r.title,
-            url: r.url,
-            snippet: r.snippet,
-            source: r.source,
-            provider: r.provider,
-          })),
-      );
-
-      if (serviceOk) return;
-
-      try {
-        await signAndPublishLegacyCache(eventData);
-      } catch {
-        indexedQueriesRef.current.delete(normalized);
       }
     })();
   }, [autoIndex]);

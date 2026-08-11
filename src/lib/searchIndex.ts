@@ -1,30 +1,23 @@
 /**
- * 0xSearchstr Auto-Indexing Engine
- * (federated — shared protocol with 0xPresearchstr and compatible forks)
+ * 0xSearchstr legacy query cache — READ-ONLY protocol remnants.
+ * (federated — shared with 0xPresearchstr and compatible forks)
  *
- * Publishes search results to Nostr as the 0xSearchstr bot account.
- * Each unique search query becomes an addressable event (kind 30078)
- * with the d-tag set to a normalized query hash.
+ * ─── Status: FROZEN LEGACY (SIP-01 §17) ─────────────────────────────
+ * New document indexing uses the Search Index Protocol (kind 39697,
+ * docs/SEARCH_INDEX_PROTOCOL.md). This kind 30078 query→results cache is
+ * legacy data: this client READS it for backward compatibility (cache hits
+ * from 0xPresearchstr and older deployments) but no longer writes it.
  *
- * The index grows with every search across every user. Next time
- * someone searches the same (or similar) query, results are read
- * from Nostr first — no external API call needed.
+ * Historical context: each unique search query was an addressable event
+ * (kind 30078) with the d-tag set to a normalized query, published under
+ * trusted indexer bot accounts (autosigner worker, then an embedded key).
+ * Both write paths have been removed — the only signer in this codebase is
+ * the per-device indexing identity (src/lib/indexerIdentity.ts).
  *
- * ─── Federation ───────────────────────────────────────────────────
- * The protocol namespace (`0xsearchstr:cache:*` d-tags, `0xsearchstr`
- * t-tag, kind 30078) is SHARED with 0xPresearchstr and every compatible
- * fork. Each app signs cache events with its own indexer key:
+ * Readers trust ONLY events signed by keys in INDEXER_PUBKEYS — filtering
+ * by authors prevents cache poisoning from arbitrary kind 30078 writers.
  *
- *   - 0xSearchstr bot:      12ad55ad…77d199
- *   - 0xPresearchstr bot:   e34726cc…f84bca
- *
- * Readers trust ALL known indexer pubkeys (INDEXER_PUBKEYS), so a
- * cache write from any compatible client is a cache hit for every
- * other client. 0xSearchstr makes Presearch better; 0xPresearchstr
- * makes 0xSearchstr better. Running your own fork? Add your own
- * indexer pubkey to the list and you join the same index.
- *
- * Event structure:
+ * Legacy event structure (for reference):
  *   kind: 30078 (application-specific data)
  *   d: "0xsearchstr:cache:<normalized-query>"
  *   content: JSON array of cached SearchResult objects
@@ -36,14 +29,11 @@
  *     ["cached_at", "<unix timestamp>"]
  *     ["result_count", "<number>"]
  *     ["alt", "Community search index cache for: <query>"]
- *
- * Security: Only events signed by keys in INDEXER_PUBKEYS are trusted.
- * Readers filter by authors: INDEXER_PUBKEYS to prevent cache poisoning.
  */
 
 import type { SearchResult } from '@/lib/providers/types';
 
-/** 0xSearchstr bot pubkey (hex) — this app's indexer. */
+/** 0xSearchstr bot pubkey (hex) — historical indexer, trusted for reads. */
 export const SEARCHSTR_INDEX_PUBKEY = '12ad55ad1fdb918f5314c9e9a5cd135be9b746e6eee15fd871df131a5677d199';
 
 /** 0xPresearchstr bot pubkey (hex) — the federated sister app. */
@@ -51,8 +41,8 @@ export const PRESEARCHSTR_INDEX_PUBKEY = 'e34726ccb624f4bb6aebabdfd9a41f5e160ca9
 
 /**
  * Trusted indexer pubkeys. Cache events are only read from these authors.
- * Both apps publish with the exact same schema, so their events are
- * interchangeable — this is what makes the index federated.
+ * Both apps published with the exact same schema, so their events are
+ * interchangeable — this is what made the cache federated.
  */
 export const INDEXER_PUBKEYS: string[] = [
   SEARCHSTR_INDEX_PUBKEY,
@@ -65,12 +55,6 @@ export const INDEX_KIND = 30078;
 /** Max age of cache entries before they're considered stale (24 hours). */
 export const CACHE_MAX_AGE_SECONDS = 86400;
 
-/** Min results to bother caching. */
-const MIN_RESULTS_TO_CACHE = 3;
-
-/** Max results to store in a single cache event (keep events reasonable). */
-const MAX_CACHED_RESULTS = 30;
-
 /** Normalize a query for use as a d-tag key. */
 export function normalizeQuery(query: string): string {
   return query
@@ -80,13 +64,7 @@ export function normalizeQuery(query: string): string {
     .replace(/[^\w\s-]/g, ''); // strip punctuation
 }
 
-/** Build the d-tag for a cache event. */
-export function cacheDTag(query: string): string {
-  return `0xsearchstr:cache:${normalizeQuery(query)}`;
-}
-
-/** Strip Nostr-specific fields from SearchResult before caching.
- * We don't cache nostrEvent (too large) or scores (recomputed on read). */
+/** Legacy cached-result shape (Nostr-specific fields were stripped before caching). */
 interface CachedResult {
   id: string;
   title: string;
@@ -104,70 +82,12 @@ interface CachedResult {
   tags?: string[];
 }
 
-/** Convert a SearchResult to a cacheable form. */
-export function toCachedResult(r: SearchResult): CachedResult {
-  return {
-    id: r.id,
-    title: r.title,
-    url: r.url,
-    snippet: r.snippet,
-    source: r.source,
-    provider: r.provider,
-    timestamp: r.timestamp,
-    author: r.author,
-    authorAvatar: r.authorAvatar,
-    domain: r.domain,
-    thumbnail: r.thumbnail,
-    kind: r.kind,
-    engine: r.engine,
-    tags: r.tags,
-  };
-}
-
 /** Convert cached data back to SearchResult with cache scores. */
 export function fromCachedResult(r: CachedResult): SearchResult {
   return {
     ...r,
     source: r.source as SearchResult['source'],
     score: 90, // Cached results score between Nostr (100) and web (80)
-  };
-}
-
-/**
- * Build the unsigned event for caching search results.
- * Returns null if results aren't worth caching.
- */
-export function buildCacheEvent(
-  query: string,
-  results: SearchResult[],
-): { kind: number; content: string; tags: string[][] } | null {
-  // Don't cache if too few results or only Nostr-native results (those are already
-  // on Nostr: Nostr source hits, community submissions, and keyword stakes are all
-  // relay-native — caching them would duplicate them and strip their event context).
-  const nonNostrResults = results.filter(
-    (r) => r.source !== 'nostr' && r.provider !== 'keyword-stake' && r.provider !== 'community',
-  );
-  if (nonNostrResults.length < MIN_RESULTS_TO_CACHE) return null;
-
-  const toCache = nonNostrResults
-    .slice(0, MAX_CACHED_RESULTS)
-    .map(toCachedResult);
-
-  const now = Math.floor(Date.now() / 1000);
-  const normalized = normalizeQuery(query);
-
-  return {
-    kind: INDEX_KIND,
-    content: JSON.stringify(toCache),
-    tags: [
-      ['d', `0xsearchstr:cache:${normalized}`],
-      ['t', '0xsearchstr'],
-      ['t', 'search-cache'],
-      ['query', query.trim()],
-      ['cached_at', String(now)],
-      ['result_count', String(toCache.length)],
-      ['alt', `Community search index cache for: ${query.trim()}`],
-    ],
   };
 }
 

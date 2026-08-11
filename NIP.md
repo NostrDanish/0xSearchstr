@@ -74,9 +74,14 @@ The cache is **community-driven**: every user's search grows the index. The more
 - Cache expires after **24 hours** (client-side staleness check).
 - Nostr-native results (`source: nostr`, community submissions, keyword stakes) are never re-cached — they're already on relays, and caching would strip their event context.
 
-### Signing (Autosigner)
+### Signing (historical)
 
-Each app signs its cache events via a **server-side autosigner** (Cloudflare Worker, `worker.ts` in each repo): the indexer key is a Cloudflare secret and never ships to browsers. The worker validates the payload (whitelisted fields, http/https URLs only), rate-limits by IP, dedupes per normalized query, then signs and publishes to the index relays. When the service is unreachable, clients fall back to a legacy embedded key so the shared index keeps growing. Either way, the signed event follows this exact schema — **the schema is the federation contract**, not the signer.
+Cache events were signed by per-app **indexer bot keys** — first via a server-side
+autosigner (Cloudflare Worker), with an embedded-key fallback. Both write paths have
+since been removed in favor of the SIP-01 document index (kind 39697, signed by
+per-device indexing identities). **This cache is frozen:** the schema above is kept
+only so readers can keep consuming historical events. New document indexing MUST
+use kind 39697.
 
 ### Content Schema (SearchResult)
 
