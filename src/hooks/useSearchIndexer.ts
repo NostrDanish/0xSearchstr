@@ -36,6 +36,7 @@ import { buildCacheEvent, normalizeQuery, SEARCHSTR_INDEX_PUBKEY } from '@/lib/s
 import { indexViaService } from '@/lib/indexerService';
 import { getIndexerIdentity } from '@/lib/indexerIdentity';
 import { buildIndexEvent, normalizeIndexUrl, observationFromResult } from '@/lib/webIndex';
+import { getSearchRelayUrls } from '@/lib/appRelays';
 import { useAppContext } from '@/hooks/useAppContext';
 
 /**
@@ -44,13 +45,6 @@ import { useAppContext } from '@/hooks/useAppContext';
  * autosigner service is offline. New document indexing never uses it.
  */
 const LEGACY_BOT_NSEC_HEX = 'e338a5ffca6405297366c1db5cd1bc432db51a26b225792917c1fb39ea8d19db';
-
-/** Relays index observations + legacy cache events are published to. */
-const PUBLISH_RELAYS = [
-  'wss://relay.ditto.pub/',
-  'wss://relay.primal.net/',
-  'wss://relay.damus.io/',
-];
 
 /** Max document observations published per search. */
 const MAX_OBSERVATIONS_PER_SEARCH = 10;
@@ -66,10 +60,14 @@ function getRelay(url: string): NRelay1 {
   return relay;
 }
 
-/** Publish a signed event to all index relays (best-effort). */
+/**
+ * Publish a signed event to the user's search relay pool (best-effort).
+ * The pool = active defaults + customs (Settings → Search Relays), so users
+ * fully control where their index contributions go.
+ */
 async function publishEvent(signedEvent: NostrEvent) {
   await Promise.allSettled(
-    PUBLISH_RELAYS.map(async (url) => {
+    getSearchRelayUrls().map(async (url) => {
       const relay = getRelay(url);
       await relay.event(signedEvent);
     }),

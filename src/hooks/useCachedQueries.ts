@@ -10,15 +10,9 @@
 import { useQuery } from '@tanstack/react-query';
 import type { NostrEvent, NostrFilter } from '@nostrify/nostrify';
 
+import { getSearchRelayUrls } from '@/lib/appRelays';
 import { getSearchRelay } from '@/lib/searchRelays';
 import { INDEX_KIND, INDEXER_PUBKEYS } from '@/lib/searchIndex';
-
-/** Relays the cache is published to (must mirror useSearchIndexer). */
-const CACHE_RELAYS = [
-  'wss://relay.ditto.pub/',
-  'wss://relay.primal.net/',
-  'wss://relay.damus.io/',
-];
 
 export interface CachedQueryEntry {
   /** Original query text (from the `query` tag). */
@@ -57,7 +51,7 @@ export function useCachedQueries(limit = 80) {
       };
 
       const settled = await Promise.allSettled(
-        CACHE_RELAYS.map((url) => {
+        getSearchRelayUrls().map((url) => {
           const relay = getSearchRelay(url);
           return relay.query([filter], {
             signal: AbortSignal.any([signal, AbortSignal.timeout(8000)]),

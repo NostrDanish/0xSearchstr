@@ -235,7 +235,7 @@ interface SearchProvider {
 |----------|--------|-----|---------|-------|
 | **Web Index** | Nostr kind 39697 | WebSocket | 🟢 Nostr | Shared document observations from all indexers (SIP-01) |
 | **Cache Index** | Federated Nostr index | WebSocket | 🟢 Nostr | Legacy query cache, still read for compatibility |
-| **Nostr** | NIP-50 relays | WebSocket | 🟢 Nostr | 4 default search relays + user customs |
+| **Nostr** | NIP-50 relays | WebSocket | 🟢 Nostr | UNCAGED + community default relays, fully user-editable |
 | **Community** | Nostr kind 30078 | WebSocket | 🟢 Nostr | User-submitted links + Nostra Search index |
 | **SearXNG** | Dynamic instance pool | CORS proxy | 🔴 Proxied | DDG, Brave, Wikipedia, and dozens more |
 | **DuckDuckGo** | HTML scraper | CORS proxy | 🔴 Proxied | Direct DDG fallback when SearXNG is slow |
@@ -265,7 +265,7 @@ Instead of a hardcoded instance list, the SearXNG provider uses a **self-healing
 Two layers, both manageable at [`/settings`](https://0xSearchstr.shakespeare.wtf/settings):
 
 - **Your Relays (NIP-65)** — your personal relay list with read/write flags; publishes kind 10002 when logged in. Defaults to the 0xSearchstr app relays for new users.
-- **Search Relays (NIP-50)** — the pool that powers Nostr search + the community index. Our four defaults are pinned; add your own (e.g. a self-hosted NIP-50 relay), and use the built-in latency tester to check reachability and round-trip times.
+- **Search Relays (index pool)** — the pool that powers Nostr search, the shared web index, and index publishing. Defaults: the [UNCAGED index relay](https://github.com/NostrDanish/UNCAGED-Index-Relay) (`relay-na1.metanomalist.com`), community NIP-50 relays (ditto, jskitty.cat, nos.today, nostr.band, noswhere), Primal + Hifish for replication, and a Tor index relay (`.onion`, reachable over Tor only). **Every default is removable** — removed defaults can be restored, and customs (including your own self-hosted NIP-50 relay) can be added. A built-in latency tester checks reachability and round-trip times.
 
 ### Incremental Results
 

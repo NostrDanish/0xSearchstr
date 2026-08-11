@@ -35,10 +35,15 @@ import { bytesToHex, hexToBytes } from '@noble/hashes/utils';
 /* Config                                                              */
 /* ------------------------------------------------------------------ */
 
-/** Relays the signed cache events are published to (mirror of the client). */
+/** Relays the signed cache events are published to (mirror of the client pool's
+ *  clearnet defaults — the .onion index relay is unreachable from Cloudflare). */
 const PUBLISH_RELAYS = [
+  'wss://relay-na1.metanomalist.com/',
   'wss://relay.ditto.pub/',
+  'wss://jskitty.cat/nostr',
+  'wss://search.nos.today/',
   'wss://relay.primal.net/',
+  'wss://nostr.hifish.org/',
   'wss://relay.damus.io/',
 ];
 

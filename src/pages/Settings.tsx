@@ -481,7 +481,7 @@ function YourRelaysSection() {
 /* ------------------------------------------------------------------ */
 
 function SearchRelaysSection() {
-  const { pool, testing, testRelays, addRelay, removeRelay } = useSearchRelayPool();
+  const { pool, removedDefaults, testing, testRelays, addRelay, removeRelay, restoreRelay } = useSearchRelayPool();
   const { toast } = useToast();
   const [newUrl, setNewUrl] = useState('');
 
@@ -515,8 +515,9 @@ function SearchRelaysSection() {
         </Button>
       </div>
       <p className="text-xs text-muted-foreground mb-4">
-        NIP-50 relays queried in parallel for every Nostr search (and the community index).
-        0xSearchstr's own relays are the defaults — add yours to widen coverage.
+        The relay pool that powers Nostr search, the shared web index, and index publishing.
+        Defaults include UNCAGED index relays and community NIP-50 relays — <strong className="text-foreground">every
+        relay can be removed or replaced</strong>; the pool is yours. Onion relays only connect over Tor.
       </p>
 
       {/* Add custom */}
@@ -545,6 +546,7 @@ function SearchRelaysSection() {
           const hostname = (() => {
             try { return new URL(entry.url).host; } catch { return entry.url; }
           })();
+          const isOnion = entry.url.includes('.onion');
 
           return (
             <div
@@ -553,7 +555,7 @@ function SearchRelaysSection() {
             >
               <Zap className="w-4 h-4 text-nostr shrink-0" />
               <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2 mb-0.5">
+                <div className="flex items-center gap-2 mb-0.5 flex-wrap">
                   <span className="font-mono text-sm truncate">{hostname}</span>
                   <Badge
                     variant="outline"
@@ -566,6 +568,11 @@ function SearchRelaysSection() {
                   >
                     {entry.origin === 'default' ? 'Default' : 'Custom'}
                   </Badge>
+                  {isOnion && (
+                    <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-tor/30 text-tor">
+                      Tor
+                    </Badge>
+                  )}
                 </div>
                 {entry.status === 'untested' && (
                   <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
@@ -588,28 +595,67 @@ function SearchRelaysSection() {
                 {entry.status === 'error' && (
                   <span className="flex items-center gap-1.5 text-xs text-destructive">
                     <XCircle className="w-3.5 h-3.5" />
-                    Unreachable
+                    {isOnion ? 'Unreachable (needs Tor)' : 'Unreachable'}
                   </span>
                 )}
               </div>
-              {entry.origin === 'custom' && (
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-8 w-8 text-muted-foreground hover:text-destructive shrink-0"
-                  onClick={() => {
-                    removeRelay(entry.url);
-                    toast({ title: 'Search relay removed', description: entry.url });
-                  }}
-                  aria-label={`Remove ${hostname}`}
-                >
-                  <Trash2 className="w-4 h-4" />
-                </Button>
-              )}
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 text-muted-foreground hover:text-destructive shrink-0"
+                onClick={() => {
+                  removeRelay(entry.url);
+                  toast({
+                    title: entry.origin === 'default' ? 'Default relay removed' : 'Search relay removed',
+                    description: entry.origin === 'default'
+                      ? `${hostname} removed — you can restore it below.`
+                      : entry.url,
+                  });
+                }}
+                aria-label={`Remove ${hostname}`}
+              >
+                <Trash2 className="w-4 h-4" />
+              </Button>
             </div>
           );
         })}
       </div>
+
+      {/* Removed defaults — restorable */}
+      {removedDefaults.length > 0 && (
+        <div className="mt-4">
+          <h3 className="text-xs font-medium text-muted-foreground flex items-center gap-2 mb-2">
+            Removed defaults
+            <Badge variant="secondary" className="text-[10px] font-mono px-1.5 py-0">{removedDefaults.length}</Badge>
+          </h3>
+          <div className="space-y-2">
+            {removedDefaults.map((url) => {
+              const hostname = (() => {
+                try { return new URL(url).host; } catch { return url; }
+              })();
+              return (
+                <div
+                  key={url}
+                  className="flex items-center gap-3 px-4 py-2.5 rounded-lg border border-dashed border-border/60 bg-muted/30"
+                >
+                  <span className="font-mono text-sm text-muted-foreground truncate flex-1">{hostname}</span>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      restoreRelay(url);
+                      toast({ title: 'Default relay restored', description: hostname });
+                    }}
+                  >
+                    <RefreshCw className="w-3.5 h-3.5 mr-1.5" />
+                    Restore
+                  </Button>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
     </section>
   );
 }

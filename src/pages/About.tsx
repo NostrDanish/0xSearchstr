@@ -42,7 +42,7 @@ export default function About() {
                 <Layers className="w-4 h-4 text-primary" />
                 <span>All providers run <strong className="text-foreground">in parallel</strong> — results stream in as each provider completes</span>
               </div>
-              <Step number={1} icon={<Zap className="w-4 h-4 text-nostr" />} title="Nostr Provider" description="NIP-50 search queries to relay.nostr.band and relay.ditto.pub. Profiles, notes, articles, and files — all with rich rendering." active />
+              <Step number={1} icon={<Zap className="w-4 h-4 text-nostr" />} title="Nostr Provider" description="NIP-50 search queries to your relay pool (UNCAGED index relays + community search relays by default). Profiles, notes, articles, and files — all with rich rendering." active />
               <Step number={2} icon={<Globe className="w-4 h-4 text-clearnet" />} title="SearXNG Provider" description="Meta-search across DuckDuckGo, Brave, Wikipedia, and dozens more via public instances with automatic failover." active />
               <Step number={3} icon={<BookOpen className="w-4 h-4" />} title="Wikipedia Provider" description="Direct MediaWiki API queries. No proxy needed — Wikipedia sets CORS headers." active />
               <Step number={4} icon={<Newspaper className="w-4 h-4" />} title="Hacker News Provider" description="Algolia-powered HN search API. Stories with points, comments, and author attribution." active />
@@ -119,7 +119,7 @@ export default function About() {
             features={[
               'Direct client-side relay connections — no intermediary',
               'Indexes kinds 0 (profiles), 1 (notes), 30023 (articles), 1063 (files)',
-              'Deduplicates across relay.nostr.band + relay.ditto.pub',
+              'Deduplicates across every relay in your search pool',
               'Results ranked by relay relevance, sorted by recency',
             ]}
           />
