@@ -36,6 +36,7 @@ import {
   restoreAllDefaultIndexRelays,
   gitRelays,
   wikiRelays,
+  onionRelaysReachable,
 } from '@/lib/appRelays';
 import { getSearchRelay } from '@/lib/searchRelays';
 
@@ -111,6 +112,18 @@ function useRelayPool(store: PoolStore) {
       pool.map(async (entry) => {
         const start = performance.now();
         try {
+          // Never attempt default .onion relays from a clearnet origin: the
+          // connection can't succeed anyway, and on devices with a local Tor
+          // resolver the .onion name resolves to loopback — which trips
+          // Chrome/Brave's Local Network Access permission prompt. Custom
+          // (user-added) onion relays are attempted: that's an explicit choice.
+          if (
+            entry.origin === 'default' &&
+            entry.url.includes('.onion') &&
+            !onionRelaysReachable()
+          ) {
+            throw new Error('onion-unreachable-clearnet');
+          }
           const relay = getSearchRelay(entry.url);
           await relay.query([{ kinds: store.probeKinds, limit: 1 }], {
             signal: AbortSignal.timeout(5000),

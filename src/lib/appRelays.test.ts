@@ -100,4 +100,19 @@ describe('relay pools', () => {
     const onion = 'ws://acuy3mjnv26tkyaaucndlxmg2ocntz4rtebhavk57vgruozm42iaznqd.onion/';
     expect(toSecureRelayUrl(onion)).toBe(onion);
   });
+
+  it('excludes default .onion relays from the effective pool on clearnet origins', () => {
+    // jsdom runs on http://localhost — a clearnet (non-.onion) origin.
+    const onion = INDEX_RELAYS.find((u) => u.includes('.onion'))!;
+    expect(onion).toBeDefined();
+    expect(getIndexRelayUrls()).not.toContain(onion);
+    // The constant still lists it (it activates on .onion deployments).
+    expect(INDEX_RELAYS).toContain(onion);
+  });
+
+  it('user-added custom .onion relays are always attempted (explicit choice)', () => {
+    const custom = addCustomIndexRelay('ws://bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb.onion/');
+    expect(custom).toBe('ws://bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb.onion/');
+    expect(getIndexRelayUrls()).toContain(custom!);
+  });
 });

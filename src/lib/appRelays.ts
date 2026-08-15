@@ -159,13 +159,34 @@ export function normalizeRelayUrl(input: string): string | null {
   }
 }
 
+/**
+ * Is a default .onion relay reachable from this context?
+ *
+ * Onion relays only work over Tor. From a clearnet origin the connection
+ * attempt is worse than useless: on systems with a local Tor resolver (or
+ * some VPNs) the .onion hostname resolves to LOOPBACK, which makes
+ * Chrome/Brave's Local Network Access show the site a scary
+ * "wants to access other apps and services on this device" permission
+ * prompt — for a connection that can never succeed anyway.
+ *
+ * So default onion relays are attempted ONLY when the app itself is served
+ * from a .onion origin (where they actually work). Custom relays the user
+ * added themselves are always attempted — that's an explicit choice.
+ */
+export function onionRelaysReachable(): boolean {
+  return typeof location !== 'undefined' && location.hostname.endsWith('.onion');
+}
+
 /** Effective pool: defaults minus hidden, then customs (deduped). */
 function effectivePool(defaults: readonly string[], customKey: string, hiddenKey: string): string[] {
   const hidden = new Set(readList(hiddenKey));
+  const includeOnionDefaults = onionRelaysReachable();
   const seen = new Set<string>();
   const pool: string[] = [];
   for (const url of [...defaults, ...readList(customKey)]) {
     if (hidden.has(url) || seen.has(url)) continue;
+    // Skip default onion relays on clearnet origins (see onionDefaultsReachable).
+    if (!includeOnionDefaults && defaults.includes(url) && url.includes('.onion')) continue;
     seen.add(url);
     pool.push(url);
   }
