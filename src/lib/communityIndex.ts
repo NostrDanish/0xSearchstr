@@ -1,15 +1,15 @@
 /**
  * Community Index — user-submitted search results on Nostr.
  *
- * 0xSearchstr was built independently; the idea of letting EVERY user
- * curate the index (not just bots/crawlers) was adopted after discovering
- * Nostra Search (github.com/nostrasearch/nostrasearch.github.io, GPL-3.0),
- * a project exploring the same territory. Credit to them for the
+ * 0xSearchstr/0xSearchstr were built independently; the idea of letting
+ * EVERY user curate the index (not just bots/crawlers) was adopted after
+ * discovering Nostra Search (github.com/nostrasearch/nostrasearch.github.io,
+ * GPL-3.0), a project exploring the same territory. Credit to them for the
  * community-curation idea — this is our own implementation with an
  * improved schema (unique per-URL d-tags; theirs reuse one d-tag per
  * author, so one author can only hold a single entry):
  *
- *   0xSearchstr submissions (kind 30078):
+ *   0xSearchstr submissions (kind 30078, shared "0xsearchstr" namespace):
  *     ["d", "0xsearchstr:submit:<url-hash>"]   ← unique per URL
  *     ["t", "0xsearchstr-submit"]
  *     ["t", "<user tag>"] ...
@@ -32,14 +32,17 @@ import { detectContentType, contentTypeLabel, isValidSubmissionUrl, type Content
 /** Kind used for community submissions (NIP-78 application data). */
 export const COMMUNITY_KIND = 30078;
 
-/** t-tag marking 0xSearchstr community submissions. */
+/** t-tag marking community submissions (shared with 0xSearchstr + forks). */
 export const COMMUNITY_T_TAG = '0xsearchstr-submit';
 
 /** Nostra Search index d-tag (for read interop). */
 export const NOSTRA_D_TAG = 'nostra:index';
 
+/** NIP-B0 web bookmark kind (read interop — user-curated web links). */
+export const BOOKMARK_KIND = 39701;
+
 /* ------------------------------------------------------------------ */
-/* Building (0xSearchstr submissions)                                  */
+/* Building (0xSearchstr submissions)                               */
 /* ------------------------------------------------------------------ */
 
 export interface SubmissionInput {
@@ -108,10 +111,10 @@ function extractDomain(url: string): string {
 }
 
 /* ------------------------------------------------------------------ */
-/* Parsing (0xSearchstr submissions)                                   */
+/* Parsing (0xsearchstr-protocol submissions)                          */
 /* ------------------------------------------------------------------ */
 
-/** Parse a 0xSearchstr community submission into a SearchResult. */
+/** Parse a 0xsearchstr-protocol community submission into a SearchResult. */
 export function parseSubmissionEvent(event: NostrEvent): SearchResult | null {
   if (event.kind !== COMMUNITY_KIND) return null;
   if (!event.tags.some(([n, v]) => n === 't' && v === COMMUNITY_T_TAG)) return null;
@@ -138,6 +141,47 @@ export function parseSubmissionEvent(event: NostrEvent): SearchResult | null {
     tags: event.tags.filter(([n]) => n === 't').map(([, v]) => v)
       .filter((v) => v !== COMMUNITY_T_TAG && v !== type).slice(0, 5),
     score: 96, // Nostr-curated — just below organic Nostr results (100)
+    nostrEvent: event,
+  };
+}
+
+/* ------------------------------------------------------------------ */
+/* Parsing (NIP-B0 web bookmarks, kind 39701)                          */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Parse a NIP-B0 web bookmark into a SearchResult. The `d` tag is the
+ * bookmarked URI — with the scheme omitted when it's https (per the NIP),
+ * so reconstruct it. Bookmarks are user-curated by definition: any author
+ * is accepted, structure + URL scheme are validated instead.
+ */
+export function parseBookmarkEvent(event: NostrEvent): SearchResult | null {
+  if (event.kind !== BOOKMARK_KIND) return null;
+
+  const d = getTag(event, 'd');
+  if (!d?.trim()) return null;
+
+  const raw = d.trim();
+  const url = raw.includes('://') ? raw : `https://${raw}`;
+  if (!isValidSubmissionUrl(url)) return null;
+
+  const title = getTag(event, 'title')?.trim() || url;
+  const publishedTag = getTag(event, 'published_at');
+  const published = publishedTag ? parseInt(publishedTag, 10) : NaN;
+
+  return {
+    id: event.id,
+    title,
+    url,
+    snippet: event.content.trim(),
+    source: 'web',
+    provider: 'nostr-bookmark',
+    timestamp: Number.isFinite(published) ? published : event.created_at,
+    domain: extractDomain(url),
+    kind: 'Bookmark',
+    engine: 'Nostr Bookmark',
+    tags: event.tags.filter(([n]) => n === 't').map(([, v]) => v).slice(0, 5),
+    score: 94, // curated by a real user, below native submissions (96)
     nostrEvent: event,
   };
 }

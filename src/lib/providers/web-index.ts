@@ -1,42 +1,42 @@
 /**
  * Web Index provider — searches the shared decentralized web index
- * (Search Index Protocol kind 39697 document observations).
+ * (Search Index Protocol kind 39697 document observations, spec:
+ * https://github.com/NostrDanish/SIP-01 — local copy docs/SIP-01.md).
  *
- * Two read strategies run together (spec §15):
+ * Reading (spec §15):
+ * - Baseline: plain NIP-01 filters work on every relay. We fetch recent
+ *   observations and match the query client-side (AND across title,
+ *   description, URL, topics).
+ * - Acceleration: the filter also carries a NIP-50 `search` keyword.
+ *   SIP-01-aware relays answer with relevance-ranked matches and understand
+ *   web operators (site:, lang:, after:, type:, …); relays that don't
+ *   support NIP-50 simply ignore the keyword and return recent events.
  *
- *   1. Baseline (every NIP-01 relay): fetch recent kind 39697 events with a
- *      plain `{ kinds, limit }` filter, match the query client-side.
- *   2. Acceleration (SIP-01-aware relays, e.g. UNCAGED): a NIP-50 `search`
- *      filter pushes the query server-side. NIP-50 sanctions `key:value`
- *      extensions and requires relays to ignore unsupported ones, so this
- *      is safe to send to stock relays too — they just fall back to their
- *      default full-text behavior over the events they hold.
- *
- * Events from both paths merge by id, group by document (`d` tag), and count
- * distinct indexer pubkeys per document — the core agreement signal.
- *
- * Any indexer is trusted structurally: events are self-signed observations
- * of public web metadata, validated by parseIndexEvent (URL allowlist,
- * schema version, field caps). Ranking signal: independent observation
- * count + recency.
+ * Observations are grouped by document id (`d` tag); distinct indexer count
+ * is the core ranking signal ("N independent indexers saw this page").
+ * Matched groups are integrity-checked per spec §18 step 2 (d ↔ normalized
+ * u, x ↔ content) via verifyObservation() before display.
  */
 import type { NostrEvent, NostrFilter } from '@nostrify/nostrify';
 
-import { getSearchRelayUrls } from '@/lib/appRelays';
+import { getSearchRelayUrls, getIndexRelayUrls } from '@/lib/appRelays';
 import { getSearchRelay } from '@/lib/searchRelays';
-import { WEB_INDEX_KIND, parseIndexEvent, type IndexObservation } from '@/lib/webIndex';
+import { WEB_INDEX_KIND, parseIndexEvent, verifyObservation, type IndexObservation } from '@/lib/webIndex';
+import { matchWithRelevance, tokenizeRaw, type TermMatch } from '@/lib/queryMatch';
 import type { SearchProvider, SearchOptions, ProviderSearchResponse, SearchResult } from './types';
 
-/** How many recent observations to pull per filter before client-side matching. */
+/** How many recent observations to pull per relay. */
 const FETCH_LIMIT = 300;
 
-/** AND-match across title, description, url, topics. */
-function matchesQuery(obs: IndexObservation, terms: string[]): boolean {
-  if (terms.length === 0) return true;
-  const haystack = [obs.title, obs.description, obs.url, ...obs.topics]
-    .join(' ')
-    .toLowerCase();
-  return terms.every((t) => haystack.includes(t));
+/** AND-match + relevance across title, description, url, topics (smart tokenization). */
+function matchQuery(obs: IndexObservation, query: ReturnType<typeof tokenizeRaw>): TermMatch {
+  // tokenizeRaw strips NIP-50 operator tokens (site:, lang:, …) — those are
+  // relay-side directives — then matches with stop-word tolerance, plural
+  // folding, the multi-word gutting guard, and phrase-aware relevance.
+  return matchWithRelevance(
+    [obs.title, obs.description, obs.url, ...obs.topics],
+    query,
+  );
 }
 
 function extractDomain(url: string): string {
@@ -65,51 +65,45 @@ function groupByDocument(observations: IndexObservation[]): Map<string, Document
   return groups;
 }
 
-/** Map a content/observation type to the source tab it belongs to. */
-function sourceForObservation(obs: IndexObservation): SearchResult['source'] {
-  if (obs.network === 'tor') return 'tor';
-  if (obs.network === 'i2p') return 'i2p';
-  return 'web';
+/** Display label for a §9.2 `type` extension value. */
+function typeLabel(type: string | undefined): string | undefined {
+  if (!type || type === 'page') return undefined; // the default — no badge noise
+  return type.charAt(0).toUpperCase() + type.slice(1);
 }
 
 export const webIndexProvider: SearchProvider = {
   id: 'web-index',
   name: 'Web Index',
   source: 'web',
-  additionalSources: ['tor', 'i2p'], // network extension tag routes observations to their tabs
   privacy: 'nostr',
   privacyNote: 'Reads the decentralized web index from Nostr relays. Relay operators see the query, but no account is linked.',
 
   async search({ query, signal }: SearchOptions): Promise<ProviderSearchResponse> {
-    const trimmed = query.trim();
-    if (!trimmed) return { results: [] };
+    if (!query.trim()) return { results: [] };
 
-    // Baseline: recent observations, matched client-side (works everywhere).
-    const baselineFilter: NostrFilter = {
+    // NIP-50 acceleration (spec §15): safe on every relay — relays that
+    // don't support search ignore the keyword; SIP-01-aware relays answer
+    // with ranked matches and apply any operators the user typed.
+    const filter: NostrFilter & { search?: string } = {
       kinds: [WEB_INDEX_KIND],
-      limit: FETCH_LIMIT,
-    };
-    // Acceleration: NIP-50 server-side search (spec §15). Stock relays ignore
-    // unsupported operators per NIP-50, so this is safe to send anywhere.
-    const searchFilter: NostrFilter & { search?: string } = {
-      kinds: [WEB_INDEX_KIND],
-      search: trimmed,
+      search: query.trim(),
       limit: FETCH_LIMIT,
     };
 
-    const timeout = (ms: number) => AbortSignal.any([signal ?? AbortSignal.timeout(10000), AbortSignal.timeout(ms)]);
+    // Read the union of the search pool and the index pool — observations are
+    // published to the index pool, and SIP-01-aware search relays live in both.
+    const readUrls = [...new Set([...getSearchRelayUrls(), ...getIndexRelayUrls()])];
 
     const settled = await Promise.allSettled(
-      getSearchRelayUrls().flatMap((url) => {
+      readUrls.map(async (url) => {
         const relay = getSearchRelay(url);
-        return [
-          relay.query([baselineFilter], { signal: timeout(6000) }),
-          relay.query([searchFilter], { signal: timeout(6000) }),
-        ];
+        return relay.query([filter], {
+          signal: AbortSignal.any([signal ?? AbortSignal.timeout(10000), AbortSignal.timeout(6000)]),
+        });
       }),
     );
 
-    // Merge by event id (same event may arrive from multiple relays/filters).
+    // Merge by event id (same event may arrive from multiple relays).
     const events = new Map<string, NostrEvent>();
     for (const r of settled) {
       if (r.status !== 'fulfilled') continue;
@@ -124,31 +118,43 @@ export const webIndexProvider: SearchProvider = {
       .filter((o): o is IndexObservation => o !== null);
 
     const groups = groupByDocument(observations);
-    const terms = trimmed.toLowerCase().split(/\s+/).filter((t) => t.length >= 2);
+
+    // Match groups client-side (with relevance), then integrity-check the
+    // displayed observation (d ↔ u, x ↔ content — spec §18 step 2).
+    const terms = tokenizeRaw(query);
+    const candidates = [...groups.values()]
+      .map((group) => ({ group, m: matchQuery(group.latest, terms) }))
+      .filter(({ m }) => m.match);
+    const verified = await Promise.all(
+      candidates.map(async (c) => ((await verifyObservation(c.group.latest)) ? c : null)),
+    );
 
     const results: SearchResult[] = [];
-    for (const group of groups.values()) {
-      const { latest } = group;
-      if (!matchesQuery(latest, terms)) continue;
-
-      const indexerCount = group.indexers.size;
+    for (const c of verified) {
+      if (!c) continue;
+      const { latest } = c.group;
+      const indexerCount = c.group.indexers.size;
 
       results.push({
         id: `widx:${latest.d}`,
         title: latest.title,
         url: latest.url,
         snippet: latest.description,
-        source: sourceForObservation(latest),
+        source: 'web',
         provider: 'web-index',
         timestamp: latest.observedAt,
         domain: extractDomain(latest.url),
         thumbnail: latest.image,
         engine: 'Web Index',
+        kind: typeLabel(latest.extensions.type),
         tags: latest.topics.slice(0, 5),
-        // Cached-index sits at 90, community at 96. Protocol observations rank
-        // just below community curation, boosted slightly by independent
-        // indexer agreement (capped so it can't overtake curated content).
-        score: 93 + Math.min(indexerCount - 1, 3),
+        // Rank WITH fresh organic results (SearXNG sits at 80), not above
+        // them — a page being in the index is not by itself a quality signal.
+        // Relevance to the actual query words scales the base; independent
+        // indexer agreement lifts a result above the organic band (capped).
+        // Inside the ±5 tie band the merge sorts by recency, so single-observer
+        // hits interleave with fresh web results instead of dominating them.
+        score: 78 + c.m.relevance * 4 + Math.min(indexerCount - 1, 2),
         nostrEvent: latest.event,
       });
     }

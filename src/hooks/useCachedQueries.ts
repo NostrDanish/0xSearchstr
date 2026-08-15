@@ -1,17 +1,19 @@
 /**
- * Trending cached queries — browsable view of the federated community index.
+ * Legacy cached-query listing — ADMIN STATS ONLY.
  *
- * Reads the most recent kind 30078 cache events published by ALL trusted
- * indexers (0xSearchstr + 0xPresearchstr bots) across the cache relays,
- * and turns them into a list of queries people have searched before.
- * This is what makes the cache a moat: every search becomes discoverable
- * content — no matter which compatible app it ran on.
+ * Reads the most recent kind 30078 cache events published by trusted
+ * indexers (0xSearchstr + 0xSearchstr bots). These events carry plaintext
+ * queries, which is exactly why user-facing surfaces no longer read them:
+ * trending now comes from hashed k-anonymity term signals (see
+ * src/lib/termSignals.ts + useTrendingTerms). This hook survives only to
+ * show the team the legacy pool size on /admin — do not wire it back into
+ * user-facing UI.
  */
 import { useQuery } from '@tanstack/react-query';
 import type { NostrEvent, NostrFilter } from '@nostrify/nostrify';
 
-import { getSearchRelayUrls } from '@/lib/appRelays';
 import { getSearchRelay } from '@/lib/searchRelays';
+import { getIndexRelayUrls } from '@/lib/appRelays';
 import { INDEX_KIND, INDEXER_PUBKEYS } from '@/lib/searchIndex';
 
 export interface CachedQueryEntry {
@@ -51,11 +53,15 @@ export function useCachedQueries(limit = 80) {
       };
 
       const settled = await Promise.allSettled(
-        getSearchRelayUrls().map((url) => {
-          const relay = getSearchRelay(url);
-          return relay.query([filter], {
-            signal: AbortSignal.any([signal, AbortSignal.timeout(8000)]),
-          });
+        getIndexRelayUrls().map(async (url) => {
+          try {
+            const relay = getSearchRelay(url);
+            return await relay.query([filter], {
+              signal: AbortSignal.any([signal, AbortSignal.timeout(8000)]),
+            });
+          } catch {
+            return [] as NostrEvent[]; // dead relay = empty contribution
+          }
         }),
       );
 

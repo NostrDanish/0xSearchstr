@@ -13,10 +13,48 @@ import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
+import { VoteButtons, VoteTalliesProvider } from '@/components/VoteButtons';
+import { RepoView } from '@/components/RepoView';
 import { useAuthor } from '@/hooks/useAuthor';
 import { sanitizeUrl } from '@/lib/sanitizeUrl';
 import { kindLabel, timeAgo, npubShort, getTitle, getSummary, getDTag } from '@/lib/nostrHelpers';
+import { queryRelayPool } from '@/lib/searchRelays';
+import { getGitRelayUrls, getWikiRelayUrls, getIndexRelayUrls, getSearchRelayUrls } from '@/lib/appRelays';
 import NotFound from './NotFound';
+
+/**
+ * Events linked from search results don't necessarily live on the user's
+ * NIP-65 relays: wiki articles live on the wiki pool, git events on the
+ * ngit/GRASP pool, index/stake events on the index pool. Look every event
+ * up across ALL app relay pools (in addition to the user's pool) or linked
+ * content would 404 with "not found" for most users.
+ */
+async function queryAcrossPools(
+  nostr: { query: (filters: NostrFilter[], opts?: { signal?: AbortSignal }) => Promise<NostrEvent[]> },
+  filter: NostrFilter,
+  signal: AbortSignal,
+): Promise<NostrEvent | undefined> {
+  const poolUrls = [
+    ...new Set([
+      ...getSearchRelayUrls(),
+      ...getWikiRelayUrls(),
+      ...getGitRelayUrls(),
+      ...getIndexRelayUrls(),
+    ]),
+  ];
+
+  const [fromUserPool, poolResults] = await Promise.all([
+    nostr.query([filter], { signal: AbortSignal.any([signal, AbortSignal.timeout(7000)]) })
+      .catch(() => [] as NostrEvent[]),
+    queryRelayPool(poolUrls, [filter], { signal, timeoutMs: 7000 }),
+  ]);
+
+  if (fromUserPool.length > 0) return fromUserPool[0];
+  for (const events of poolResults) {
+    if (events.length > 0) return events[0];
+  }
+  return undefined;
+}
 
 export function NIP19Page() {
   const { nip19: identifier } = useParams<{ nip19: string }>();
@@ -81,7 +119,14 @@ function ProfileView({ pubkey, nip19Id }: { pubkey: string; nip19Id: string }) {
                 <AvatarFallback><User className="w-5 h-5" /></AvatarFallback>
               </Avatar>
               <div className="flex-1 min-w-0 pt-1">
-                <h1 className="text-xl font-bold truncate">{name}</h1>
+                <h1 className="text-xl font-bold truncate flex items-center gap-2">
+                  {name}
+                  {metadata?.bot && (
+                    <Badge variant="outline" className="text-[10px] shrink-0 border-muted-foreground/30 text-muted-foreground">
+                      Bot
+                    </Badge>
+                  )}
+                </h1>
                 {metadata?.nip05 && (
                   <p className="text-sm text-muted-foreground font-mono truncate">{metadata.nip05}</p>
                 )}
@@ -91,6 +136,18 @@ function ProfileView({ pubkey, nip19Id }: { pubkey: string; nip19Id: string }) {
           <CardContent className="space-y-4">
             {metadata?.about && (
               <p className="text-sm text-muted-foreground whitespace-pre-wrap">{metadata.about}</p>
+            )}
+            {/* NIP-24 extra metadata: website */}
+            {metadata?.website && sanitizeUrl(metadata.website) && (
+              <a
+                href={sanitizeUrl(metadata.website)}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1.5 text-sm text-primary hover:underline"
+              >
+                <ExternalLink className="w-3.5 h-3.5" />
+                {sanitizeUrl(metadata.website)!.replace(/^https?:\/\//, '')}
+              </a>
             )}
             <CopyId identifier={nip19Id} />
           </CardContent>
@@ -111,8 +168,7 @@ function EventView({ eventId, author: authorHint, nip19Id }: { eventId: string; 
       if (authorHint) {
         (filter as NostrFilter & { authors?: string[] }).authors = [authorHint];
       }
-      const [result] = await nostr.query([filter], { signal: AbortSignal.any([signal, AbortSignal.timeout(6000)]) });
-      return result;
+      return queryAcrossPools(nostr, filter, signal);
     },
     retry: 2,
   });
@@ -152,6 +208,23 @@ function EventView({ eventId, author: authorHint, nip19Id }: { eventId: string; 
             </CardHeader>
             <CardContent className="space-y-4">
               <p className="text-sm leading-relaxed whitespace-pre-wrap break-words">{event.content}</p>
+              {/* NIP-25 voting — anonymous by default, npub if toggled */}
+              <VoteTalliesProvider results={[{ url: `/${nip19Id}`, nostrEvent: event }]}>
+                <div className="flex items-center gap-2 pt-1 border-t border-border/50">
+                  <VoteButtons
+                    result={{
+                      id: event.id,
+                      title: event.content.slice(0, 80),
+                      url: `/${nip19Id}`,
+                      snippet: '',
+                      source: 'nostr',
+                      provider: 'nostr',
+                      nostrEvent: event,
+                    }}
+                    className="py-2"
+                  />
+                </div>
+              </VoteTalliesProvider>
               <CopyId identifier={nip19Id} />
             </CardContent>
           </Card>
@@ -179,11 +252,11 @@ function AddressableView({ kind, pubkey, identifier, nip19Id }: {
   const { data: event, isLoading } = useQuery<NostrEvent | undefined>({
     queryKey: ['nostr', 'addr', kind, pubkey, identifier],
     queryFn: async ({ signal }) => {
-      const [result] = await nostr.query(
-        [{ kinds: [kind], authors: [pubkey], '#d': [identifier], limit: 1 }],
-        { signal: AbortSignal.any([signal, AbortSignal.timeout(6000)]) },
+      return queryAcrossPools(
+        nostr,
+        { kinds: [kind], authors: [pubkey], '#d': [identifier], limit: 1 },
+        signal,
       );
-      return result;
     },
     retry: 2,
   });
@@ -206,6 +279,11 @@ function AddressableView({ kind, pubkey, identifier, nip19Id }: {
         <BackButton />
         {isLoading ? (
           <EventSkeleton />
+        ) : event && event.kind === 30617 ? (
+          /* NIP-34 repositories get the full embedded repo page (metadata,
+             branches, issues/PRs/patches) — never a bounce to the author's
+             announced web URL, which is often a dead local GRASP instance. */
+          <RepoView event={event} nip19Id={nip19Id} />
         ) : event ? (
           <Card>
             <CardHeader className="pb-3">
@@ -228,9 +306,28 @@ function AddressableView({ kind, pubkey, identifier, nip19Id }: {
               )}
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="prose prose-sm dark:prose-invert max-w-none text-sm leading-relaxed whitespace-pre-wrap break-words">
-                {event.content}
-              </div>
+              {event.content && (
+                <div className="prose prose-sm dark:prose-invert max-w-none text-sm leading-relaxed whitespace-pre-wrap break-words">
+                  {event.content}
+                </div>
+              )}
+              {/* NIP-25 voting — anonymous by default, npub if toggled */}
+              <VoteTalliesProvider results={[{ url: `/${nip19Id}`, nostrEvent: event }]}>
+                <div className="flex items-center gap-2 pt-1 border-t border-border/50">
+                  <VoteButtons
+                    result={{
+                      id: event.id,
+                      title,
+                      url: `/${nip19Id}`,
+                      snippet: summary ?? '',
+                      source: 'nostr',
+                      provider: 'nostr',
+                      nostrEvent: event,
+                    }}
+                    className="py-2"
+                  />
+                </div>
+              </VoteTalliesProvider>
               <CopyId identifier={nip19Id} />
             </CardContent>
           </Card>

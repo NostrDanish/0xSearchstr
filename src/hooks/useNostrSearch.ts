@@ -1,7 +1,7 @@
 import type { NostrEvent, NostrFilter } from '@nostrify/nostrify';
 import { useQuery } from '@tanstack/react-query';
 
-import { getSearchRelayUrls } from '@/lib/appRelays';
+import { SEARCH_RELAYS } from '@/lib/appRelays';
 import { getSearchRelay } from '@/lib/searchRelays';
 
 export type NostrSearchKind = 'all' | 'notes' | 'profiles' | 'articles' | 'files';
@@ -43,7 +43,7 @@ export function useNostrSearch({ query, kind = 'all', limit = 40, enabled = true
 
       // Query all search relays in parallel and merge/dedupe results.
       const results = await Promise.allSettled(
-        getSearchRelayUrls().map(async (url) => {
+        SEARCH_RELAYS.map(async (url) => {
           const relay = getSearchRelay(url);
           return relay.query([filter], { signal: AbortSignal.any([signal, AbortSignal.timeout(8000)]) });
         }),

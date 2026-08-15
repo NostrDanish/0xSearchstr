@@ -98,7 +98,36 @@ The legacy query cache (kind 30078, `0xsearchstr:cache:*`) remains federated wit
 
 ### 🔍 Explore the Index
 
-[`/explore`](https://0xSearchstr.shakespeare.wtf/explore) turns the index into discoverable content: **recently indexed pages** (with independent-indexer counts) plus trending cached queries, result counts, and aggregate stats. Every search becomes content. The hero page and empty states surface trending queries too — you're never left with a dead end.
+[`/explore`](https://0xSearchstr.shakespeare.wtf/explore) turns the index into discoverable content: **recently indexed pages** (with independent-indexer counts), trending terms, staked keywords, and aggregate stats. Every search becomes content.
+
+### 💎 Keyword Staking (Presearch-style, Nostr-native)
+
+Stake **your identity** on a keyword instead of tokens: sign an addressable kind 30078 event (`0xsearchstr:stake:<keyword>`) binding a keyword to your link. Anyone searching that keyword — on any compatible client — sees your link as the top "Community Stake" placement. One stake per keyword per npub; re-staking replaces it. No tokens, no auction.
+
+### 👍 Voting & Reporting
+
+Every result card carries 👍/👎 votes and a report flag:
+
+- **Votes** are NIP-25 reactions (kind 7; `e` tag for events, `r` tag with the SIP-01-normalized URL for pages). **Anonymous by default** — signed by this device's indexing identity, never your npub. Settings → Indexing has an opt-in "vote with my npub" toggle.
+- **Reports** are NIP-56 kind 1984 events (`0xsearchstr.abuse` namespace), landing in the team's `/admin` inbox.
+
+### 📈 Trending Terms (k-anonymity)
+
+Trending searches with **no plaintext queries anywhere**: each device publishes only `sha256(normalized query)` under its indexing identity (`0xsearchstr:term:*`). A term's plaintext is revealed by the network only once **3+ independent devices** searched it — the reveal is self-verifying (readers re-hash and compare). Rare or sensitive queries (NIP-19 ids, NIP-05 addresses, URLs, math) are never signaled at all.
+
+### 🛡 Team Console (`/admin`)
+
+A hidden, role-gated dashboard (not linked in nav — team members see "Admin console" in their account menu when logged in with a team key):
+
+- **Stats** — indexed pages, stakes, open reports, relay pool sizes
+- **Reports** — the NIP-56 abuse inbox, one-click "hide from results"
+- **Moderation** — team-signed NIP-32 labels (kind 1985, `0xsearchstr.moderation`) hide URLs/event ids from **every user's** results; un-hiding publishes a NIP-09 deletion. Clients trust labels from the owner + role-list pubkeys only
+- **Roles** (owner) — add/remove admins & moderators by npub (owner-signed `0xsearchstr:admin-roles` / `0xsearchstr:mod-roles` addressable events)
+- **Filter test** — check whether a URL or event id is currently filtered
+
+### 🤖 AI Answers (optional, off by default)
+
+An AI answer layer sits on top of the federation: the top results become a numbered evidence pack, the model answers **only** from it, with clickable `[n]` citations. Ephemeral — never indexed into SIP-01. Tiers: your own key (BYOK — PPQ.ai, OpenRouter, Ollama, any OpenAI-compatible endpoint) → a built-in free tier (shared rate-limited PPQ key, public by design). Privacy boundaries hold: NIP-19/05, URLs, and math keep their deterministic paths; Nostr results are excluded from evidence unless you opt in.
 
 ### ⌨️ Quality of Life
 
@@ -159,19 +188,31 @@ src/lib/providers/
 ├── web-index.ts      ← Shared web index — SIP-01 kind 39697 observations (reads first)
 ├── cached-index.ts   ← Legacy federated query cache (kind 30078, read for compatibility)
 ├── nostr.ts          ← NIP-50 relay search
-├── community.ts      ← Community-curated index (+ Nostra Search interop)
+├── stakes.ts         ← Keyword stakes (Presearch-style top placements)
+├── community.ts      ← Community-curated index (+ Nostra Search interop + NIP-B0)
+├── git.ts            ← NIP-34 repos/issues/PRs (ngit/GRASP pool, read-only)
+├── wiki.ts           ← NIP-54 wiki articles (wikifreedia pool, read-only)
+├── brave.ts          ← Brave Search API (BYOK, off by default)
 ├── searxng.ts        ← SearXNG meta-search with failover
 ├── duckduckgo.ts     ← DuckDuckGo HTML scraper
 ├── wikipedia.ts      ← MediaWiki API
 ├── hacker-news.ts    ← Algolia HN Search API
 ├── stackoverflow.ts  ← StackExchange API
 ├── tor.ts            ← Ahmia.fi .onion search
-├── registry.ts       ← Provider catalog
+├── registry.ts       ← Provider catalog (+ per-engine enable/disable)
 └── index.ts          ← Barrel export
 
 src/lib/
-├── webIndex.ts        ← SIP-01 protocol: URL normalization, event build/parse/validate
-└── indexerIdentity.ts ← Per-device anonymous indexer keypair (generate/export/regenerate)
+├── webIndex.ts        ← SIP-01 protocol: URL normalization, build/parse/verify
+├── indexerIdentity.ts ← Per-device anonymous indexer keypair
+├── keywordStakes.ts   ← Stake schema (0xsearchstr:stake:*)
+├── termSignals.ts     ← k-anonymity trending (0xsearchstr:term:*)
+├── votes.ts           ← NIP-25 result votes (device identity by default)
+├── reports.ts         ← NIP-56 abuse reports (0xsearchstr.abuse)
+├── moderation.ts      ← NIP-32 team labels (0xsearchstr.moderation) + roles
+├── queryClassify.ts   ← Query understanding (URL/nip19/nip05/math detection)
+├── resultRank.ts      ← Coverage-ranked result merging
+└── ai/                ← Optional AI answer layer (BYOK + built-in free tier)
 ```
 
 ### Adding a Provider
@@ -201,16 +242,22 @@ interface SearchProvider {
 
 | Provider | Source | API | Privacy | Notes |
 |----------|--------|-----|---------|-------|
-| **Web Index** | Nostr kind 39697 | WebSocket | 🟢 Nostr | Shared document observations from all indexers (SIP-01) |
-| **Cache Index** | Federated Nostr index | WebSocket | 🟢 Nostr | Legacy query cache, still read for compatibility |
+| **Web Index** | Nostr kind 39697 | WebSocket | 🟢 Nostr | Shared document observations from all indexers (SIP-01), integrity-verified (`d`↔`u`, `x`↔content) |
+| **Cache Index** | Federated Nostr index | WebSocket | 🟢 Nostr | Legacy query cache, read-only (frozen) — off by default |
 | **Nostr** | NIP-50 relays | WebSocket | 🟢 Nostr | UNCAGED + community default relays, fully user-editable |
-| **Community** | Nostr kind 30078 | WebSocket | 🟢 Nostr | User-submitted links + Nostra Search index |
+| **Keyword Stakes** | Nostr kind 30078 | WebSocket | 🟢 Nostr | Community-staked keyword placements |
+| **Community** | Nostr kind 30078 + 39701 | WebSocket | 🟢 Nostr | User-submitted links + NIP-B0 bookmarks + Nostra Search index |
+| **Git Repos** | ngit/GRASP relays (NIP-34) | WebSocket, read-only | 🟢 Nostr | Repos, issues, PRs & patches — pool editable in Settings |
+| **Nostr Wiki** | Wiki relays (NIP-54) | WebSocket, read-only | 🟢 Nostr | Wikifreedia corpus — pool editable in Settings |
 | **SearXNG** | Dynamic instance pool | CORS proxy | 🔴 Proxied | DDG, Brave, Wikipedia, and dozens more |
 | **DuckDuckGo** | HTML scraper | CORS proxy | 🔴 Proxied | Direct DDG fallback when SearXNG is slow |
-| **Wikipedia** | MediaWiki API | Direct (CORS) | 🟡 Direct | No proxy needed |
+| **Brave** | Brave Search API | CORS proxy | 🔴 Proxied | Off by default — BYOK in Settings → Engines |
+| **Wikipedia** | MediaWiki API | Direct (CORS) | 🟡 Direct | Off by default — enable in Settings → Engines |
 | **Hacker News** | Algolia API | Direct (CORS) | 🟡 Direct | Stories with points/comments |
-| **Stack Overflow** | StackExchange API | Direct (CORS) | 🟡 Direct | Questions with votes/answers |
-| **Tor (Ahmia)** | HTML scraping | CORS proxy | 🔴 Proxied | Policy-compliant .onion search |
+| **Stack Overflow** | StackExchange API | Direct (CORS) | 🟡 Direct | Off by default — enable in Settings → Engines |
+| **Tor (Ahmia)** | HTML scraping | CORS proxy | 🔴 Proxied | Off by default — policy-compliant .onion search |
+
+Every engine can be toggled off in **Settings → Search Engines** — off engines never run and never see your query. The tab bar is modular too: **Settings → Search Tabs** picks visible tabs, order, and the default landing tab.
 
 ### Dynamic SearXNG Instance Pool (searxist-style)
 
@@ -248,16 +295,19 @@ Results appear as each provider finishes — no waiting for the slowest one.
 
 ## Search Tabs
 
+The tab bar is **fully modular** — Settings → Search Tabs lets every user pick which tabs show, reorder them, and star the tab a fresh visit starts on. Deep links (`/?source=tor&q=…`) keep working even for hidden tabs.
+
 | Tab | Sources |
 |-----|---------|
-| **All** | All providers merged + ranked |
-| **Nostr** | Profiles, notes, articles, Wikifreedia, files |
-| **Web** | Community index, SearXNG + DuckDuckGo meta-search, cache |
-| **Wiki** | Wikipedia articles |
+| **Web** | Web Index (SIP-01) + Stakes + Community + SearXNG + DuckDuckGo + Brave (BYOK) |
+| **Index** | The community index only — SIP-01 observations + legacy cache |
+| **All** | All providers merged + ranked (stakes on top) |
+| **Nostr** | Profiles, notes, articles, Wikifreedia, files, torrents, code snippets |
 | **News** | Hacker News stories |
-| **Code** | Stack Overflow questions |
-| **Tor** | .onion hidden services via Ahmia + curated community onion links |
-| **I2P** | Eepsite directory links |
+| **Wiki** | Nostr wiki articles (NIP-54 pool); Wikipedia engine off until enabled |
+| **Code** | Git repos/issues/PRs (NIP-34 via ngit/GRASP) + NIP-C0 snippets; Stack Overflow off until enabled |
+| **Tor** | .onion hidden services via Ahmia + index-observed onion pages |
+| **I2P** | Eepsite directory links + index-observed eepsites |
 
 ---
 

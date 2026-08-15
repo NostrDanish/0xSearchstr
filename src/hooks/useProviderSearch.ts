@@ -14,7 +14,11 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 import type { SearchResult, SearchSource, ProviderSearchResponse } from '@/lib/providers/types';
 import { getProvidersForPrivacy, getProvidersForSource } from '@/lib/providers/registry';
+import { classifyQuery, providerAllowlistFor } from '@/lib/queryClassify';
+import { sortByQueryRelevance } from '@/lib/resultRank';
+import { isHiddenResult } from '@/lib/moderation';
 import { useSearchIndexer } from '@/hooks/useSearchIndexer';
+import { useModerationSet } from '@/hooks/useModeration';
 import { useAppContext } from '@/hooks/useAppContext';
 
 export type ProviderStatus = 'idle' | 'searching' | 'done' | 'error';
@@ -70,10 +74,18 @@ export function useProviderSearch({
   const queryClient = useQueryClient();
   const { config } = useAppContext();
   const privacyMode = config.privacyMode;
-  const activeProviders = useMemo(
-    () => getProvidersForPrivacy(source, privacyMode),
-    [source, privacyMode],
-  );
+  const activeProviders = useMemo(() => {
+    let providers = getProvidersForPrivacy(source, privacyMode);
+    // User-disabled engines never run (Settings → Search Engines).
+    if (config.disabledProviders.length > 0) {
+      providers = providers.filter((p) => !config.disabledProviders.includes(p.id));
+    }
+    // Skip providers that can't possibly answer this query class
+    // (a bare npub to SearXNG is pure waste + a privacy leak).
+    const allowlist = providerAllowlistFor(classifyQuery(query));
+    if (allowlist) providers = providers.filter((p) => allowlist.has(p.id));
+    return providers;
+  }, [source, privacyMode, query, config.disabledProviders]);
   /** Providers that exist for this source but are blocked by Privacy Mode. */
   const suppressedProviders = useMemo(() => {
     if (!privacyMode) return [];
@@ -81,11 +93,37 @@ export function useProviderSearch({
     return getProvidersForSource(source).filter((p) => !active.has(p.id));
   }, [source, privacyMode, activeProviders]);
   const { indexResults } = useSearchIndexer();
+  // Owner-signed moderation list — hidden URLs/event ids are filtered for everyone.
+  const moderationSet = useModerationSet();
 
   // Provider states tracked outside React Query for per-provider granularity.
   const [providerStates, setProviderStates] = useState<Map<string, ProviderState>>(new Map());
   const statesRef = useRef(providerStates);
   statesRef.current = providerStates;
+
+  // ─── Result streaming ──────────────────────────────────────────────
+  // Results render as each provider resolves instead of waiting for the
+  // slowest one (SearXNG via proxy can take seconds; the Nostr index
+  // answers in ~100ms). The final complete set still lands in the query
+  // cache as `data`.
+  const [streamed, setStreamed] = useState<SearchResult[]>([]);
+  const streamKey = `${query}||${source}||${privacyMode}`;
+  const streamKeyRef = useRef(streamKey);
+  if (streamKeyRef.current !== streamKey) {
+    // Query changed — reset the stream before any new appends land.
+    streamKeyRef.current = streamKey;
+    setStreamed([]);
+  }
+
+  /** Append a provider's results to the visible stream (dedupe + coverage rank). */
+  const appendStreamed = useCallback((key: string, fresh: SearchResult[], query: string) => {
+    if (fresh.length === 0) return;
+    setStreamed((prev) => {
+      if (streamKeyRef.current !== key) return prev; // stale provider from an old query
+      const merged = deduplicateResults([...prev, ...fresh]);
+      return sortByQueryRelevance(merged, query);
+    });
+  }, []);
 
   const updateProviderState = useCallback((id: string, update: Partial<ProviderState>) => {
     setProviderStates((prev) => {
@@ -141,8 +179,9 @@ export function useProviderSearch({
               latencyMs,
             });
 
-            // Invalidate to trigger re-render as each provider completes.
-            // This is safe because we accumulate in `results` array.
+            // Stream: show this provider's results immediately — the UI
+            // re-renders per provider completion, not at the very end.
+            appendStreamed(streamKey, response.results, query);
             return response;
           } catch {
             const latencyMs = Math.round(performance.now() - start);
@@ -166,12 +205,9 @@ export function useProviderSearch({
       // Deduplicate by URL (prefer the result with the higher score).
       const deduped = deduplicateResults(results);
 
-      // Sort by score descending, then by recency.
-      deduped.sort((a, b) => {
-        const scoreDiff = (b.score ?? 0) - (a.score ?? 0);
-        if (Math.abs(scoreDiff) > 5) return scoreDiff;
-        return (b.timestamp ?? 0) - (a.timestamp ?? 0);
-      });
+      // Sort by coverage-adjusted score, then recency inside the tie band —
+      // results matching all/most query words outrank loose engine hits.
+      sortByQueryRelevance(deduped, query);
 
       return {
         results: deduped,
@@ -181,10 +217,20 @@ export function useProviderSearch({
     enabled: enabled && query.trim().length > 0,
     staleTime: 30_000,
     retry: 0,
-    placeholderData: (prev) => prev,
+    // No placeholderData — a new query streams fresh results instead of
+    // showing the previous query's stale set.
   });
 
-  const allResults = data?.results ?? [];
+  // The visible result set: the completed (cached) data once available,
+  // the live stream while providers are still resolving.
+  const baseResults = data?.results ?? streamed;
+
+  // Apply owner-signed moderation filtering to whatever is visible.
+  // (Additive: until the moderation list loads, nothing is filtered.)
+  const allResults = useMemo(() => {
+    if (!moderationSet) return baseResults;
+    return baseResults.filter((r) => !isHiddenResult(r, moderationSet));
+  }, [baseResults, moderationSet]);
   const suggestions = data?.suggestions ?? [];
 
   // Reset provider states when query clears.
@@ -202,7 +248,8 @@ export function useProviderSearch({
   const isLoading = providers.some((p) => p.status === 'searching');
   const isEmpty = query.trim().length > 0 && !isLoading && allResults.length === 0;
 
-  // Auto-index: publish results to the 0xSearchstr Nostr cache.
+  // Auto-index: contribute surfaced pages (SIP-01 kind 39697) + a hashed
+  // term signal (kind 30078, no plaintext) to the shared Nostr index.
   const indexedQueryRef = useRef('');
   useEffect(() => {
     if (

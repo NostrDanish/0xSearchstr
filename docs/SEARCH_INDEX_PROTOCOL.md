@@ -2,11 +2,18 @@
 
 > **The canonical specification has moved to its own repository:**
 > **[github.com/NostrDanish/SIP-01](https://github.com/NostrDanish/SIP-01)**
-> — specifically [`public/spec/SIP-01.md`](https://github.com/NostrDanish/SIP-01/blob/main/public/spec/SIP-01.md) (v1.1).
+> — specifically [`public/spec/SIP-01.md`](https://github.com/NostrDanish/SIP-01/blob/main/public/spec/SIP-01.md) (**v1.2**).
 >
 > That document is the single source of truth for the wire format. This file
 > documents **0xSearchstr's implementation** of it and stays intentionally thin
 > so the two never drift apart.
+>
+> **v1.2 note:** documentation-only revision — NIP references re-audited
+> (NIP-33 folded into NIP-01; the `l` tag convention lives in NIP-32, used here
+> in the bare two-element form per §12.5; NIP-50 operator support is
+> SHOULD-level per relay — prefer `site:` over the colliding `domain:`), plus
+> the §20.1 NIP dependency table. **The wire format is unchanged** — schema
+> `v` stays `"1"` and every v1/v1.1 event remains valid.
 
 **One shared decentralized index. Many independent indexers. Many independent
 search nodes. Many independent search engines. No mandatory identity. No single

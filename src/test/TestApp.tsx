@@ -5,6 +5,7 @@ import { NostrLoginProvider } from '@nostrify/react/login';
 import NostrProvider from '@/components/NostrProvider';
 import { AppProvider } from '@/components/AppProvider';
 import { AppConfig } from '@/contexts/AppContext';
+import { DEFAULT_TAB_CONFIG } from '@/components/SourceTabs';
 
 interface TestAppProps {
   children: React.ReactNode;
@@ -33,6 +34,11 @@ export function TestApp({ children }: TestAppProps) {
       updatedAt: 0,
     },
     useAppBlossomServers: true,
+    privacyMode: false,
+    autoIndex: false, // tests must not publish to relays
+    tabConfig: DEFAULT_TAB_CONFIG,
+    voteWithIdentity: false,
+    disabledProviders: [],
   };
 
   return (

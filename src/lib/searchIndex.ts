@@ -1,23 +1,30 @@
 /**
- * 0xSearchstr legacy query cache — READ-ONLY protocol remnants.
- * (federated — shared with 0xPresearchstr and compatible forks)
+ * 0xSearchstr Legacy Query Cache (kind 30078) — READ-ONLY
+ * (federated fork of the 0xSearchstr indexer — same protocol, shared index)
  *
- * ─── Status: FROZEN LEGACY (SIP-01 §17) ─────────────────────────────
- * New document indexing uses the Search Index Protocol (kind 39697,
- * docs/SEARCH_INDEX_PROTOCOL.md). This kind 30078 query→results cache is
- * legacy data: this client READS it for backward compatibility (cache hits
- * from 0xPresearchstr and older deployments) but no longer writes it.
+ * Historical write path: each unique search query became an addressable
+ * event (kind 30078) with the d-tag set to a normalized query hash, signed
+ * by a trusted app indexer key. This app no longer publishes cache events
+ * (the old signing service is retired) — SIP-01 document observations
+ * (kind 39697, per-device identities) are the write path now. This module
+ * remains so readers can still serve historical cache hits until they age
+ * out (24h staleness window on read).
  *
- * Historical context: each unique search query was an addressable event
- * (kind 30078) with the d-tag set to a normalized query, published under
- * trusted indexer bot accounts (autosigner worker, then an embedded key).
- * Both write paths have been removed — the only signer in this codebase is
- * the per-device indexing identity (src/lib/indexerIdentity.ts).
+ * ─── Federation ───────────────────────────────────────────────────
+ * The protocol namespace (`0xsearchstr:cache:*` d-tags, `0xsearchstr`
+ * t-tag, kind 30078) is SHARED with 0xSearchstr and every compatible
+ * fork. Each app signs (or signed) cache events with its own indexer key:
  *
- * Readers trust ONLY events signed by keys in INDEXER_PUBKEYS — filtering
- * by authors prevents cache poisoning from arbitrary kind 30078 writers.
+ *   - 0xSearchstr bot:                12ad55ad…77d199
+ *   - Presearchstr signers:           be7cad9a…c4289, e34726cc…f84bca  (retired)
  *
- * Legacy event structure (for reference):
+ * Readers trust ALL known indexer pubkeys (INDEXER_PUBKEYS), so a
+ * cache write from any compatible client is a cache hit for every
+ * other client. 0xSearchstr makes Presearchstr better; Presearchstr
+ * makes 0xSearchstr better. Running your own fork? Add your own
+ * indexer pubkey to the list and you join the same index.
+ *
+ * Event structure:
  *   kind: 30078 (application-specific data)
  *   d: "0xsearchstr:cache:<normalized-query>"
  *   content: JSON array of cached SearchResult objects
@@ -29,24 +36,43 @@
  *     ["cached_at", "<unix timestamp>"]
  *     ["result_count", "<number>"]
  *     ["alt", "Community search index cache for: <query>"]
+ *
+ * Security: Only events signed by keys in INDEXER_PUBKEYS are trusted.
+ * Readers filter by authors: INDEXER_PUBKEYS to prevent cache poisoning.
  */
 
 import type { SearchResult } from '@/lib/providers/types';
 
-/** 0xSearchstr bot pubkey (hex) — historical indexer, trusted for reads. */
+/** 0xSearchstr bot pubkey (hex) — the original indexer. */
 export const SEARCHSTR_INDEX_PUBKEY = '12ad55ad1fdb918f5314c9e9a5cd135be9b746e6eee15fd871df131a5677d199';
 
-/** 0xPresearchstr bot pubkey (hex) — the federated sister app. */
-export const PRESEARCHSTR_INDEX_PUBKEY = 'e34726ccb624f4bb6aebabdfd9a41f5e160ca97ba2ea13fad8f8ff29a7f84bca';
+/**
+ * Presearchstr legacy cache signer pubkey (hex) — RETIRED.
+ * The sister app no longer publishes kind 30078 cache events; the key stays in
+ * the trust list so historical cache entries it signed remain readable
+ * until they age out.
+ */
+export const PRESEARCHSTR_INDEX_PUBKEY = 'be7cad9a8e47ab0adfc877a008aea17692c08c49c1a5a6d87ee79ca4370c4289';
+
+/**
+ * Presearchstr's FIRST cache signer (hex) — superseded by the one above,
+ * retired even earlier. Kept so the oldest federated cache entries remain
+ * readable everywhere.
+ */
+export const PRESEARCHSTR_LEGACY_INDEX_PUBKEY = 'e34726ccb624f4bb6aebabdfd9a41f5e160ca97ba2ea13fad8f8ff29a7f84bca';
 
 /**
  * Trusted indexer pubkeys. Cache events are only read from these authors.
- * Both apps published with the exact same schema, so their events are
- * interchangeable — this is what made the cache federated.
+ * All apps publish with the exact same schema, so their events are
+ * interchangeable — this is what makes the index federated.
+ *
+ * SIP-01 (kind 39697) needs no key list at all — observations from any
+ * per-device indexer are trusted, ranked by independent agreement.
  */
 export const INDEXER_PUBKEYS: string[] = [
-  SEARCHSTR_INDEX_PUBKEY,
   PRESEARCHSTR_INDEX_PUBKEY,
+  PRESEARCHSTR_LEGACY_INDEX_PUBKEY,
+  SEARCHSTR_INDEX_PUBKEY,
 ];
 
 /** The kind used for cache events. */
@@ -64,7 +90,8 @@ export function normalizeQuery(query: string): string {
     .replace(/[^\w\s-]/g, ''); // strip punctuation
 }
 
-/** Legacy cached-result shape (Nostr-specific fields were stripped before caching). */
+/** Strip Nostr-specific fields from SearchResult before caching.
+ * We don't cache nostrEvent (too large) or scores (recomputed on read). */
 interface CachedResult {
   id: string;
   title: string;
@@ -87,7 +114,10 @@ export function fromCachedResult(r: CachedResult): SearchResult {
   return {
     ...r,
     source: r.source as SearchResult['source'],
-    score: 90, // Cached results score between Nostr (100) and web (80)
+    // Just under the freshest organic results (SearXNG 80): the legacy cache
+    // is a stale snapshot of someone else's search, so it should interleave
+    // with organic results via the recency tie-band, not sit above them.
+    score: 79,
   };
 }
 

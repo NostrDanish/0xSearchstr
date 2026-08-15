@@ -16,28 +16,17 @@ export const APP_RELAYS: RelayMetadata = {
 };
 
 /**
- * Relays that power Nostr search + the shared web index (SIP-01).
- * These are queried in parallel for every search, and index observations
- * are published to them.
+ * Index relays (SIP-01 crawler/indexer pool).
  *
- * The default pool mixes the UNCAGED ecosystem relays (SIP-01-aware index
- * relays), community NIP-50 search relays, and one Tor onion relay (only
- * reachable over Tor — it fails fast and silently elsewhere):
+ * This is where the community index lives: SIP-01 web-index observations
+ * (kind 39697), the legacy query cache (kind 30078), community submissions,
+ * and keyword stakes are published to AND read from these relays. Every
+ * browser running the app is a crawler node — this is its default peer list.
  *
- * relay-na1.metanomalist.com — UNCAGED SIP-01 index relay (NIP-50 operators)
- * relay.ditto.pub            — Ditto relay with search support
- * jskitty.cat/nostr          — community NIP-50 search relay
- * acuy3m…nqd.onion           — Tor index relay (darknet federation)
- * search.nos.today           — NOS search relay
- * relay.primal.net           — Primal relay (index storage/replication)
- * nostr.hifish.org           — community relay
- * relay.nostr.band           — the most comprehensive NIP-50 search relay
- * relay.noswhere.com         — Noswhere relay with NIP-50
- *
- * EVERY default is user-removable (Settings → Search Relays): removed
- * defaults live in localStorage and can be restored individually.
+ * Users can extend the pool with custom relays and hide any default in
+ * Settings → Index Relays.
  */
-export const SEARCH_RELAYS = [
+export const INDEX_RELAYS = [
   'wss://relay-na1.metanomalist.com/',
   'wss://relay.ditto.pub/',
   'wss://jskitty.cat/nostr',
@@ -45,20 +34,76 @@ export const SEARCH_RELAYS = [
   'wss://search.nos.today/',
   'wss://relay.primal.net/',
   'wss://nostr.hifish.org/',
-  'wss://relay.nostr.band/',
+];
+
+/**
+ * GRASP / ngit relay pool (NIP-34 git collaboration) — READ-ONLY.
+ *
+ * Read by the git provider for the Code tab: repository announcements
+ * (kind 30617), issues (1621), PRs (1618), and patches (1617). Nothing is
+ * published here — the app has no git write path. The index.ngit.dev /
+ * index.hzrd149.com / indexer.coracle.social indexers answer NIP-50-style
+ * search; the GRASP servers return recent events that we filter client-side.
+ *
+ * Users can extend the pool with custom relays and hide any default in
+ * Settings → Git Relays.
+ */
+export const GIT_RELAYS = [
+  'wss://ngit.danconwaydev.com/',
+  'wss://gitnostr.com/',
+  'wss://relay.ngit.dev/',
+  'wss://indexer.coracle.social/',
+  'wss://index.ngit.dev/',
+  'wss://git.shakespeare.diy/',
+];
+
+/**
+ * Wiki relay pool (NIP-54 articles) — READ-ONLY.
+ *
+ * Where Nostr-native wiki content (kind 30818) actually lives. Defaults are
+ * the relay set wikistr (fiatjaf's wiki client) reads:
+ * relay.wikifreedia.xyz backs Wikifreedia, the largest NIP-54 corpus;
+ * nostr.wine / nostr21.com / relay.nostr.band are wikistr's other sources.
+ *
+ * Users can extend the pool and hide defaults in Settings → Wiki Relays.
+ */
+export const WIKI_RELAYS = [
+  'wss://relay.wikifreedia.xyz/',
+  'wss://nostr.wine/',
+  'wss://nostr21.com/',
+];
+
+/**
+ * Relays that support NIP-50 search queries (read-only full-text pool).
+ * These are queried in parallel for every Nostr search.
+ * Users can add customs and hide defaults in Settings → Search Relays.
+ *
+ * relay.ditto.pub — Ditto relay with search support
+ * relay-na1.metanomalist.com — Ditto/OpenSearch index relay (NIP-50 + NIP-77)
+ * search.nos.today — NOS search relay
+ * relay.noswhere.com — Noswhere relay with NIP-50
+ * relay.pocketnostr.com — Pocket Nostr relay with NIP-50
+ */
+export const SEARCH_RELAYS = [
+  'wss://relay.ditto.pub/',
+  'wss://relay-na1.metanomalist.com/',
+  'wss://search.nos.today/',
   'wss://relay.noswhere.com/',
+  'wss://relay.pocketnostr.com/',
 ];
 
 /* ------------------------------------------------------------------ */
-/* Custom search relays (user-managed, localStorage)                   */
+/* Pool customization (user-managed, localStorage)                     */
 /* ------------------------------------------------------------------ */
 
 const LS_CUSTOM_SEARCH_RELAYS = '0xsearchstr:search-relays:custom';
-const LS_REMOVED_DEFAULT_RELAYS = '0xsearchstr:search-relays:removed-defaults';
+const LS_HIDDEN_SEARCH_RELAYS = '0xsearchstr:search-relays:hidden';
+const LS_CUSTOM_INDEX_RELAYS = '0xsearchstr:index-relays:custom';
+const LS_HIDDEN_INDEX_RELAYS = '0xsearchstr:index-relays:hidden';
 
-function readCustomSearchRelays(): string[] {
+function readList(key: string): string[] {
   try {
-    const raw = localStorage.getItem(LS_CUSTOM_SEARCH_RELAYS);
+    const raw = localStorage.getItem(key);
     const parsed = raw ? JSON.parse(raw) : null;
     return Array.isArray(parsed) ? parsed.filter((u): u is string => typeof u === 'string') : [];
   } catch {
@@ -66,33 +111,36 @@ function readCustomSearchRelays(): string[] {
   }
 }
 
-function writeCustomSearchRelays(urls: string[]): void {
+function writeList(key: string, urls: string[]): void {
   try {
-    localStorage.setItem(LS_CUSTOM_SEARCH_RELAYS, JSON.stringify(urls));
+    localStorage.setItem(key, JSON.stringify(urls));
   } catch {
     // Storage unavailable — non-fatal.
   }
 }
 
-function readRemovedDefaults(): string[] {
-  try {
-    const raw = localStorage.getItem(LS_REMOVED_DEFAULT_RELAYS);
-    const parsed = raw ? JSON.parse(raw) : null;
-    return Array.isArray(parsed) ? parsed.filter((u): u is string => typeof u === 'string') : [];
-  } catch {
-    return [];
+/**
+ * Upgrade ws:// → wss:// when the page itself is HTTPS.
+ *
+ * Browsers throw a SYNCHRONOUS SecurityError when constructing a ws://
+ * WebSocket from an https page — one insecure relay URL in a NIP-65 list
+ * can kill a whole connection fan-out (or a NIP-46 handshake) outright.
+ * Upgrading preserves intent: nearly every relay host serves TLS on the
+ * same address, and one that doesn't simply fails to connect (graceful,
+ * async) instead of throwing.
+ */
+export function toSecureRelayUrl(url: string): string {
+  if (typeof location !== 'undefined' && location.protocol === 'https:') {
+    // .onion relays are ws-only by nature (no CA-issued TLS on Tor) and Tor
+    // Browser permits ws:// to onion hosts from HTTPS pages — exempt them.
+    if (!/^[a-z]+:\/\/[^/]*\.onion/i.test(url)) {
+      return url.replace(/^ws:\/\//i, 'wss://');
+    }
   }
+  return url;
 }
 
-function writeRemovedDefaults(urls: string[]): void {
-  try {
-    localStorage.setItem(LS_REMOVED_DEFAULT_RELAYS, JSON.stringify(urls));
-  } catch {
-    // Storage unavailable — non-fatal.
-  }
-}
-
-/** Normalize a relay URL: ws/wss only, with trailing slash (matches SEARCH_RELAYS style). */
+/** Normalize a relay URL: ws/wss only, with trailing slash on bare hosts. */
 export function normalizeRelayUrl(input: string): string | null {
   let url = input.trim();
   if (!url) return null;
@@ -111,72 +159,187 @@ export function normalizeRelayUrl(input: string): string | null {
   }
 }
 
-/** Get the user's custom search relays. */
+/** Effective pool: defaults minus hidden, then customs (deduped). */
+function effectivePool(defaults: readonly string[], customKey: string, hiddenKey: string): string[] {
+  const hidden = new Set(readList(hiddenKey));
+  const seen = new Set<string>();
+  const pool: string[] = [];
+  for (const url of [...defaults, ...readList(customKey)]) {
+    if (hidden.has(url) || seen.has(url)) continue;
+    seen.add(url);
+    pool.push(url);
+  }
+  return pool;
+}
+
+/* Search relay pool (NIP-50 reads) */
+
 export function getCustomSearchRelays(): string[] {
-  return readCustomSearchRelays();
+  return readList(LS_CUSTOM_SEARCH_RELAYS);
+}
+
+export function getHiddenSearchRelays(): string[] {
+  return readList(LS_HIDDEN_SEARCH_RELAYS);
 }
 
 /** Add a custom search relay. Returns the normalized URL, or null if invalid. */
 export function addCustomSearchRelay(input: string): string | null {
   const normalized = normalizeRelayUrl(input);
   if (!normalized) return null;
-  // Re-adding a removed default restores it instead of creating a custom entry.
+  const current = readList(LS_CUSTOM_SEARCH_RELAYS);
+  if (!current.includes(normalized)) {
+    writeList(LS_CUSTOM_SEARCH_RELAYS, [...current, normalized]);
+  }
+  // Re-adding a hidden default un-hides it.
   if ((SEARCH_RELAYS as readonly string[]).includes(normalized)) {
     restoreDefaultSearchRelay(normalized);
-    return normalized;
-  }
-  const current = readCustomSearchRelays();
-  if (!current.includes(normalized)) {
-    writeCustomSearchRelays([...current, normalized]);
   }
   return normalized;
 }
 
 /** Remove a custom search relay. */
 export function removeCustomSearchRelay(url: string): void {
-  writeCustomSearchRelays(readCustomSearchRelays().filter((u) => u !== url));
+  writeList(LS_CUSTOM_SEARCH_RELAYS, readList(LS_CUSTOM_SEARCH_RELAYS).filter((u) => u !== url));
 }
 
-/* ------------------------------------------------------------------ */
-/* Removable defaults                                                  */
-/* ------------------------------------------------------------------ */
-
-/** Remove a default relay from the effective pool (restorable). */
-export function removeDefaultSearchRelay(url: string): void {
-  const removed = readRemovedDefaults();
-  if (!removed.includes(url)) writeRemovedDefaults([...removed, url]);
+/** Hide a default search relay (user override — restorable). */
+export function hideDefaultSearchRelay(url: string): void {
+  const hidden = readList(LS_HIDDEN_SEARCH_RELAYS);
+  if (!hidden.includes(url)) writeList(LS_HIDDEN_SEARCH_RELAYS, [...hidden, url]);
 }
 
-/** Restore a previously removed default relay. */
+/** Restore a previously hidden default search relay. */
 export function restoreDefaultSearchRelay(url: string): void {
-  writeRemovedDefaults(readRemovedDefaults().filter((u) => u !== url));
+  writeList(LS_HIDDEN_SEARCH_RELAYS, readList(LS_HIDDEN_SEARCH_RELAYS).filter((u) => u !== url));
 }
 
-/** Default relays the user has removed. */
-export function getRemovedDefaultSearchRelays(): string[] {
-  return readRemovedDefaults().filter((u) => (SEARCH_RELAYS as readonly string[]).includes(u));
-}
-
-/** The active default relays (defaults minus user-removed). */
-export function getActiveDefaultSearchRelays(): string[] {
-  const removed = new Set(readRemovedDefaults());
-  return SEARCH_RELAYS.filter((u) => !removed.has(u));
+/** Restore all hidden default search relays. */
+export function restoreAllDefaultSearchRelays(): void {
+  writeList(LS_HIDDEN_SEARCH_RELAYS, []);
 }
 
 /**
- * The effective search relay pool: active defaults first, then the user's
- * custom relays (deduped). This ONE list drives NIP-50 search, web-index
- * reads, cache reads, and index publishing — and every entry is
- * user-changeable.
+ * The effective search relay pool: default NIP-50 relays (minus hidden),
+ * then the user's custom relays (deduped).
  */
 export function getSearchRelayUrls(): string[] {
-  const seen = new Set<string>();
-  const pool: string[] = [];
-  for (const url of [...getActiveDefaultSearchRelays(), ...readCustomSearchRelays()]) {
-    if (!seen.has(url)) {
-      seen.add(url);
-      pool.push(url);
-    }
+  return effectivePool(SEARCH_RELAYS, LS_CUSTOM_SEARCH_RELAYS, LS_HIDDEN_SEARCH_RELAYS);
+}
+
+/* Index relay pool (SIP-01 reads + writes) */
+
+export function getCustomIndexRelays(): string[] {
+  return readList(LS_CUSTOM_INDEX_RELAYS);
+}
+
+export function getHiddenIndexRelays(): string[] {
+  return readList(LS_HIDDEN_INDEX_RELAYS);
+}
+
+/** Add a custom index relay. Returns the normalized URL, or null if invalid. */
+export function addCustomIndexRelay(input: string): string | null {
+  const normalized = normalizeRelayUrl(input);
+  if (!normalized) return null;
+  const current = readList(LS_CUSTOM_INDEX_RELAYS);
+  if (!current.includes(normalized)) {
+    writeList(LS_CUSTOM_INDEX_RELAYS, [...current, normalized]);
   }
-  return pool;
+  if ((INDEX_RELAYS as readonly string[]).includes(normalized)) {
+    restoreDefaultIndexRelay(normalized);
+  }
+  return normalized;
+}
+
+/** Remove a custom index relay. */
+export function removeCustomIndexRelay(url: string): void {
+  writeList(LS_CUSTOM_INDEX_RELAYS, readList(LS_CUSTOM_INDEX_RELAYS).filter((u) => u !== url));
+}
+
+/** Hide a default index relay (user override — restorable). */
+export function hideDefaultIndexRelay(url: string): void {
+  const hidden = readList(LS_HIDDEN_INDEX_RELAYS);
+  if (!hidden.includes(url)) writeList(LS_HIDDEN_INDEX_RELAYS, [...hidden, url]);
+}
+
+/** Restore a previously hidden default index relay. */
+export function restoreDefaultIndexRelay(url: string): void {
+  writeList(LS_HIDDEN_INDEX_RELAYS, readList(LS_HIDDEN_INDEX_RELAYS).filter((u) => u !== url));
+}
+
+/** Restore all hidden default index relays. */
+export function restoreAllDefaultIndexRelays(): void {
+  writeList(LS_HIDDEN_INDEX_RELAYS, []);
+}
+
+/**
+ * The effective index relay pool: default SIP-01 index relays (minus hidden),
+ * then the user's custom relays (deduped). Indexing writes AND reads
+ * (SIP-01 observations, legacy cache, community submissions, keyword stakes)
+ * all use this pool so writes land where reads happen.
+ */
+export function getIndexRelayUrls(): string[] {
+  return effectivePool(INDEX_RELAYS, LS_CUSTOM_INDEX_RELAYS, LS_HIDDEN_INDEX_RELAYS);
+}
+
+/* ------------------------------------------------------------------ */
+/* Read-only satellite pools (git + wiki) — generic factory            */
+/* ------------------------------------------------------------------ */
+
+/** One editable read-only pool: defaults (hideable) + user customs. */
+function makePool(defaults: readonly string[], customKey: string, hiddenKey: string) {
+  return {
+    getCustoms: (): string[] => readList(customKey),
+    getHidden: (): string[] => readList(hiddenKey),
+    addCustom: (input: string): string | null => {
+      const normalized = normalizeRelayUrl(input);
+      if (!normalized) return null;
+      const current = readList(customKey);
+      if (!current.includes(normalized)) writeList(customKey, [...current, normalized]);
+      // Re-adding a hidden default un-hides it.
+      if (defaults.includes(normalized)) {
+        writeList(hiddenKey, readList(hiddenKey).filter((u) => u !== normalized));
+      }
+      return normalized;
+    },
+    removeCustom: (url: string): void => {
+      writeList(customKey, readList(customKey).filter((u) => u !== url));
+    },
+    hideDefault: (url: string): void => {
+      const hidden = readList(hiddenKey);
+      if (!hidden.includes(url)) writeList(hiddenKey, [...hidden, url]);
+    },
+    restoreDefault: (url: string): void => {
+      writeList(hiddenKey, readList(hiddenKey).filter((u) => u !== url));
+    },
+    restoreAllDefaults: (): void => writeList(hiddenKey, []),
+    /** Effective pool: defaults minus hidden, then customs (deduped). */
+    getUrls: (): string[] => effectivePool(defaults, customKey, hiddenKey),
+  };
+}
+
+const gitPool = makePool(
+  GIT_RELAYS,
+  '0xsearchstr:git-relays:custom',
+  '0xsearchstr:git-relays:hidden',
+);
+
+const wikiPool = makePool(
+  WIKI_RELAYS,
+  '0xsearchstr:wiki-relays:custom',
+  '0xsearchstr:wiki-relays:hidden',
+);
+
+/** Git relay pool (NIP-34 reads for the Code tab). Read-only. */
+export const gitRelays = gitPool;
+/** Wiki relay pool (NIP-54 article reads). Read-only. */
+export const wikiRelays = wikiPool;
+
+/** Effective git relay URLs (defaults − hidden + customs). */
+export function getGitRelayUrls(): string[] {
+  return gitPool.getUrls();
+}
+
+/** Effective wiki relay URLs (defaults − hidden + customs). */
+export function getWikiRelayUrls(): string[] {
+  return wikiPool.getUrls();
 }

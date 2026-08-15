@@ -3,17 +3,17 @@
  *
  * Before hitting any external API, this provider checks if the query
  * has been searched before and has cached results published by ANY
- * trusted indexer (0xSearchstr bot, 0xPresearchstr bot, …).
+ * trusted indexer (0xSearchstr bot, 0xSearchstr bot, …).
  *
  * The index is shared across every compatible client: same kind,
  * same d-tags, same t-tags — only the signer differs per app. So a
- * search on 0xPresearchstr warms the cache for 0xSearchstr users and
+ * search on 0xSearchstr warms the cache for 0xSearchstr users and
  * vice versa.
  */
 import type { NostrEvent, NostrFilter } from '@nostrify/nostrify';
 
-import { getSearchRelayUrls } from '@/lib/appRelays';
 import { getSearchRelay } from '@/lib/searchRelays';
+import { getSearchRelayUrls, getIndexRelayUrls } from '@/lib/appRelays';
 import {
   INDEXER_PUBKEYS,
   INDEX_KIND,
@@ -42,9 +42,10 @@ export const cachedIndexProvider: SearchProvider = {
       limit: INDEXER_PUBKEYS.length, // one event per indexer
     };
 
-    // Race the pool for the fastest cache hit.
+    // Race the user's search + index relays for the fastest cache hit
+    // (union: legacy cache events predate the index-pool split).
     const results = await Promise.allSettled(
-      getSearchRelayUrls().map(async (url) => {
+      [...new Set([...getSearchRelayUrls(), ...getIndexRelayUrls()])].map(async (url) => {
         const relay = getSearchRelay(url);
         return relay.query([filter], {
           signal: AbortSignal.any([

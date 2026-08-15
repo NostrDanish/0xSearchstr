@@ -2,6 +2,7 @@ import { ReactNode, useEffect } from 'react';
 import { z } from 'zod';
 import { useLocalStorage } from '@/hooks/useLocalStorage';
 import { AppContext, type AppConfig, type AppContextType, type Theme, type RelayMetadata, type BlossomServerMetadata } from '@/contexts/AppContext';
+import { getBraveApiKey } from '@/lib/providers/brave';
 
 interface AppProviderProps {
   children: ReactNode;
@@ -27,6 +28,13 @@ const BlossomServerMetadataSchema = z.object({
   updatedAt: z.number(),
 }) satisfies z.ZodType<BlossomServerMetadata>;
 
+// Zod schema for TabConfig validation
+const TabConfigSchema = z.object({
+  order: z.array(z.string()),
+  hidden: z.array(z.string()),
+  defaultTab: z.string(),
+});
+
 // Zod schema for AppConfig validation
 const AppConfigSchema = z.object({
   theme: z.enum(['dark', 'light', 'system', 'hacker']),
@@ -35,6 +43,9 @@ const AppConfigSchema = z.object({
   useAppBlossomServers: z.boolean(),
   privacyMode: z.boolean(),
   autoIndex: z.boolean(),
+  tabConfig: TabConfigSchema,
+  voteWithIdentity: z.boolean(),
+  disabledProviders: z.array(z.string()),
 }) satisfies z.ZodType<AppConfig>;
 
 export function AppProvider(props: AppProviderProps) {
@@ -52,17 +63,36 @@ export function AppProvider(props: AppProviderProps) {
       serialize: JSON.stringify,
       deserialize: (value: string) => {
         const parsed = JSON.parse(value);
+        // Migrate retired themes: 'presearch' was the sister app's brand dark.
+        // Map it to 'dark' BEFORE zod so the enum doesn't reject the config.
+        // ('system' is supported here — 0xSearchstr keeps it.)
+        if (parsed && typeof parsed === 'object' && 'theme' in parsed) {
+          const t = (parsed as { theme?: unknown }).theme;
+          if (t === 'presearch') {
+            (parsed as { theme: unknown }).theme = 'dark';
+          }
+        }
         return AppConfigSchema.partial().parse(parsed);
       }
     }
   );
 
-  // Generic config updater with callback pattern
+  // Generic config updater with callback pattern.
+  // The updater returns the fields to change — they are MERGED into the
+  // current stored config (never replace it), so callers can't wipe
+  // unrelated settings by omitting them from the returned object.
   const updateConfig = (updater: (currentConfig: Partial<AppConfig>) => Partial<AppConfig>) => {
-    setConfig(updater);
+    setConfig((currentConfig) => ({ ...currentConfig, ...updater(currentConfig) }));
   };
 
   const config = { ...defaultConfig, ...rawConfig };
+
+  // Migration: Brave is off by default now, but a stored Brave API key is an
+  // explicit past opt-in. Users who never touched the engine list get Brave
+  // re-enabled automatically; an explicitly stored list always wins.
+  if (rawConfig.disabledProviders === undefined && config.disabledProviders.includes('brave') && getBraveApiKey()) {
+    config.disabledProviders = config.disabledProviders.filter((id) => id !== 'brave');
+  }
 
   const appContextValue: AppContextType = {
     config,
@@ -70,7 +100,9 @@ export function AppProvider(props: AppProviderProps) {
   };
 
   // Apply theme effects to document
+  // Apply theme effects to document
   useApplyTheme(config.theme);
+  useSystemThemeListener(config.theme);
 
   return (
     <AppContext.Provider value={appContextValue}>
@@ -80,13 +112,14 @@ export function AppProvider(props: AppProviderProps) {
 }
 
 /**
- * Hook to apply theme changes to the document root
+ * Hook to apply theme changes to the document root.
+ * Two core themes (light/dark, both Presearch-branded) + hidden hacker.
  */
 function useApplyTheme(theme: Theme) {
   useEffect(() => {
     const root = window.document.documentElement;
 
-    root.classList.remove('light', 'dark', 'hacker');
+    root.classList.remove('light', 'dark', 'hacker', 'presearch');
 
     if (theme === 'system') {
       const systemTheme = window.matchMedia('(prefers-color-scheme: dark)')
@@ -107,8 +140,10 @@ function useApplyTheme(theme: Theme) {
 
     root.classList.add(theme);
   }, [theme]);
+}
 
-  // Handle system theme changes when theme is set to "system"
+// Handle system theme changes when theme is set to "system"
+function useSystemThemeListener(theme: Theme) {
   useEffect(() => {
     if (theme !== 'system') return;
 

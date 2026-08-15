@@ -7,32 +7,39 @@
  *   3. Done — the orchestrator picks it up automatically
  */
 import type { SearchProvider, SearchSource } from './types';
-import { cachedIndexProvider } from './cached-index';
 import { webIndexProvider } from './web-index';
+import { cachedIndexProvider } from './cached-index';
 import { nostrProvider } from './nostr';
 import { communityProvider } from './community';
+import { stakesProvider } from './stakes';
 import { searxngProvider } from './searxng';
 import { duckduckgoProvider } from './duckduckgo';
+import { braveProvider } from './brave';
 import { torProvider } from './tor';
 import { wikipediaProvider } from './wikipedia';
 import { hackerNewsProvider } from './hacker-news';
 import { stackOverflowProvider } from './stackoverflow';
+import { gitProvider } from './git';
+import { nostrWikiProvider } from './wiki';
 
 /**
- * All registered search providers, in priority order.
+ * All registered search providers, in display/priority order.
  *
- * The cached-index + web-index providers run first — if the query (or the
- * pages it surfaces) were indexed before, results come from Nostr instantly.
- * All other providers still run in parallel, and their results get merged +
- * deduped with the index.
+ * Web engines lead (SearXNG, DuckDuckGo, Brave), then the community index
+ * (web-index + cached-index), then the rest. Everything runs in parallel —
+ * order drives the provider-status chips and result streaming, not speed.
  */
 export const ALL_PROVIDERS: SearchProvider[] = [
+  duckduckgoProvider,
+  searxngProvider,
+  braveProvider,
   webIndexProvider,
   cachedIndexProvider,
-  nostrProvider,
+  stakesProvider,
   communityProvider,
-  searxngProvider,
-  duckduckgoProvider,
+  nostrProvider,
+  gitProvider,
+  nostrWikiProvider,
   wikipediaProvider,
   hackerNewsProvider,
   stackOverflowProvider,
@@ -40,8 +47,13 @@ export const ALL_PROVIDERS: SearchProvider[] = [
 ];
 
 /** Get providers that contribute to a given source tab. */
-export function getProvidersForSource(source: SearchSource | 'all'): SearchProvider[] {
+export function getProvidersForSource(source: SearchSource | 'all' | 'index' | 'i2p'): SearchProvider[] {
   if (source === 'all') return ALL_PROVIDERS;
+  if (source === 'i2p') return []; // directory links only, no providers
+  // The Index tab = the community index only (SIP-01 observations + legacy cache).
+  if (source === 'index') {
+    return ALL_PROVIDERS.filter((p) => p.id === 'web-index' || p.id === 'cached-index');
+  }
   return ALL_PROVIDERS.filter((p) => p.source === source || p.additionalSources?.includes(source));
 }
 

@@ -1,8 +1,9 @@
 /**
  * Hook for managing the dynamic SearXNG instance pool.
  *
- * Exposes the ranked pool (custom → discovered → seed), discovery
- * refresh state, and add/remove actions for custom instances.
+ * Exposes the ranked pool (custom → discovered → default), the discovery
+ * opt-in toggle (off by default), discovery refresh state, and add/remove
+ * actions for custom instances.
  */
 import { useCallback, useEffect, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -10,15 +11,19 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   getInstancePool,
   getDiscoveredCache,
+  isDiscoveryEnabled,
+  setDiscoveryEnabled,
   refreshDiscoveredInstances,
   addCustomInstance,
   removeCustomInstance,
+  toggleInstanceDisabled,
   type PoolInstance,
 } from '@/lib/searxngInstances';
 
 export function useSearxngInstances() {
   const queryClient = useQueryClient();
   const [refreshing, setRefreshing] = useState(false);
+  const [discoveryOn, setDiscoveryOn] = useState(() => isDiscoveryEnabled());
 
   const { data: pool = [] } = useQuery<PoolInstance[]>({
     queryKey: ['searxng-instance-pool'],
@@ -31,12 +36,21 @@ export function useSearxngInstances() {
     queryClient.invalidateQueries({ queryKey: ['searxng-instance-pool'] });
   }, [queryClient]);
 
-  // Trigger discovery on mount (no-op if cache is fresh).
+  // Trigger discovery on mount when enabled (no-op otherwise).
   useEffect(() => {
-    void refreshDiscoveredInstances().then(invalidate);
+    if (discoveryOn) void refreshDiscoveredInstances().then(invalidate);
+  }, [discoveryOn, invalidate]);
+
+  /** Opt in/out of live discovery from searx.space. Enabling refreshes immediately. */
+  const setDiscovery = useCallback((enabled: boolean) => {
+    setDiscoveryEnabled(enabled);
+    setDiscoveryOn(enabled);
+    if (enabled) void refreshDiscoveredInstances(true);
+    invalidate();
   }, [invalidate]);
 
   const refresh = useCallback(async () => {
+    if (!discoveryOn) return; // nothing to refresh — discovery is opt-in
     setRefreshing(true);
     try {
       await refreshDiscoveredInstances(true);
@@ -44,7 +58,7 @@ export function useSearxngInstances() {
       setRefreshing(false);
       invalidate();
     }
-  }, [invalidate]);
+  }, [discoveryOn, invalidate]);
 
   const addInstance = useCallback((url: string): string | null => {
     const added = addCustomInstance(url);
@@ -57,6 +71,13 @@ export function useSearxngInstances() {
     invalidate();
   }, [invalidate]);
 
+  /** One-click enable/disable for any instance (custom, discovered, or seed). */
+  const toggleInstance = useCallback((url: string): boolean => {
+    const disabled = toggleInstanceDisabled(url);
+    invalidate();
+    return disabled;
+  }, [invalidate]);
+
   const discoveredAt = getDiscoveredCache()?.fetchedAt;
 
   return {
@@ -65,6 +86,9 @@ export function useSearxngInstances() {
     refresh,
     addInstance,
     removeInstance,
+    toggleInstance,
     discoveredAt,
+    discoveryOn,
+    setDiscovery,
   };
 }

@@ -43,6 +43,28 @@ export interface AppConfig {
    * indexing identity (never the personal Nostr identity, never the query).
    */
   autoIndex: boolean;
+  /**
+   * Search tab customization — fully modular: which tabs are visible, in
+   * what order, and which one a fresh visit starts on.
+   */
+  tabConfig: TabConfig;
+  /**
+   * Vote identity — when false (default), 👍/👎 votes are anonymous: signed
+   * by this device's built-in SIP-01 indexing identity. When true, votes are
+   * signed with the logged-in Nostr key (attributable, like keyword stakes).
+   */
+  voteWithIdentity: boolean;
+  /** Search engines (provider ids) the user has turned off in Settings. */
+  disabledProviders: string[];
+}
+
+export interface TabConfig {
+  /** All tabs in display order (visible + hidden). */
+  order: string[];
+  /** Tab ids currently hidden from the tab bar (e.g. tor/i2p by default). */
+  hidden: string[];
+  /** Tab a fresh visit starts on (when no ?source= URL param). */
+  defaultTab: string;
 }
 
 export interface AppContextType {

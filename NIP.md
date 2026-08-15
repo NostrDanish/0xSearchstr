@@ -1,24 +1,57 @@
 # 0xSearchstr Custom Event Schemas
 
-> **Shared document protocol:** the interoperable **web document index** is
-> specified by **SIP-01**, now canonically maintained in its own repository —
-> **[github.com/NostrDanish/SIP-01](https://github.com/NostrDanish/SIP-01)**
-> (kind **39697**, one addressable event per indexed URL, per-device indexer
-> identities, no query leakage). 0xSearchstr's implementation of it is
-> documented in [docs/SEARCH_INDEX_PROTOCOL.md](docs/SEARCH_INDEX_PROTOCOL.md).
-> New indexing writes use that protocol; this file now documents the **legacy**
-> 0xsearchstr-specific schemas (query cache, community submissions, Nostra
-> interop), which remain readable for backward compatibility.
->
+## NIP Support Matrix
+
+Where existing NIPs cover a use case, we use them instead of inventing app-specific
+formats. Current support:
+
+| NIP | Name | Kind(s) | Support |
+|-----|------|---------|---------|
+| NIP-01 | Events & filters | all | ✅ core protocol |
+| NIP-19 | bech32 identifiers | — | ✅ `/npub…`, `/note1…`, `/nevent1…`, `/naddr1…` routes |
+| NIP-23 | Long-form articles | 30023 | ✅ read (Nostr tab + All) |
+| NIP-24 | Extra metadata (`display_name`, `website`, `banner`, `bot`) | 0 | ✅ read (profile pages) |
+| NIP-25 | Reactions (votes) | 7 | ✅ read + write — 👍/👎 on results; anonymous via the device indexing identity by default, or the user's npub when toggled |
+| NIP-09 | Deletion | 5 | ✅ write (owner retracts moderation labels) |
+| NIP-32 | Labeling (`L`/`l`) | —, 1985 | ✅ write (abuse reports self-label with `0xsearchstr.abuse`; owner moderation labels under `0xsearchstr.moderation`) + ✅ read (owner-signed `hidden` labels filter all users' results) |
+| NIP-34 | Git collaboration | 30617, 1621, 1618, 1617 | ✅ read — Code tab: repos (link `web`/`clone`), issues, PRs, patches from the read-only ngit/GRASP pool (`GIT_RELAYS`) |
+| NIP-35 | Torrents | 2003 | ✅ read — results link the constructed magnet URI |
+| NIP-36 | Content warnings | any | ✅ `content-warning` events render collapsed until tapped |
+| NIP-50 | Search capability | — | ✅ NIP-50 `search` filters on every Nostr read |
+| NIP-54 | Wiki | 30818 | ✅ read — dedicated wiki relay pool (wikistr relays: `relay.wikifreedia.xyz`, `nostr.wine`, `nostr21.com`, `relay.nostr.band`), user-editable in Settings → Wiki Relays |
+| NIP-56 | Reporting | 1984 | ✅ write (Policy page abuse reports, with NIP-32 labels) |
+| NIP-65 | Relay list metadata | 10002 | ✅ read + write (Settings → Your Relays) |
+| NIP-77 | Negentropy sync | — | 📖 documented in SIP-01 §15 (relay-to-relay, nothing client-side) |
+| NIP-78 | App-specific data | 30078 | ✅ submissions / stakes / term signals (read + write) · legacy cache (read-only, see below) |
+| NIP-92 | Media attachments (`imeta`) | 1 | ✅ read (inline thumbnails in results) |
+| NIP-94 | File metadata | 1063 | ✅ read (file results) |
+| NIP-B0 | Web bookmarks | 39701 | ✅ read (Community provider — user-curated links) |
+| NIP-C0 | Code snippets | 1337 | ✅ read (Code tab, language badges) |
+| BUD-03 | Blossom user server list | 10063 | ✅ read + write (uploads) |
+| SIP-01 | Search Index Protocol | 39697 | ✅ read + write ([spec](docs/SIP-01.md)) |
+
+Considered and intentionally skipped for now: NIP-5A (nsite hosting — hosting, not
+search), NIP-85 (trusted assertions — needs a provider-selection UX; a natural future
+fit for indexer reputation and zap-weighted stake ranking), NIP-86 (relay operator API),
+NIP-B7 (Blossom URL fallback — uploads already go through Blossom).
+
+---
+
+
 > **Federation note:** these schemas are the shared **`0xsearchstr` protocol** — originally
-> defined by 0xSearchstr, implemented identically by 0xPresearchstr, and open to any fork.
+> defined by 0xSearchstr, implemented identically by 0xSearchstr, and open to any fork.
 > Same kinds, same d-tag namespaces, same t-tags. The only per-app difference is **which
-> key signs auto-index cache events**. Readers trust every known indexer pubkey, so the
-> index is one shared pool across all compatible clients.
->
-> Sibling apps may define their own extensions in the same namespace (e.g. 0xPresearchstr's
-> keyword stakes, `0xsearchstr:stake:*`). Extensions are app-specific and not part of the
-> shared read path documented here.
+> key signs legacy cache events** (0xSearchstr no longer writes them — SIP-01 only).
+> Readers trust every known indexer pubkey, so the index is one shared pool across all
+> compatible clients.
+
+> **SIP-01 (v1.1):** the shared **web document index** now lives at **kind 39697** — one
+> addressable event per URL per indexer, signed by per-device pseudonymous indexing
+> identities (no central key, no queries in events). The canonical spec lives at
+> [github.com/NostrDanish/SIP-01](https://github.com/NostrDanish/SIP-01) — local copy at
+> [docs/SIP-01.md](docs/SIP-01.md), implementation guide at
+> [docs/IMPLEMENTATION-GUIDE.md](docs/IMPLEMENTATION-GUIDE.md). The kind 30078 query
+> cache below is **legacy but frozen and still read** — there is no flag day.
 
 ## Trusted Indexers
 
@@ -26,24 +59,34 @@ Cache events (below) are only read from these author pubkeys:
 
 | App | Pubkey (hex) |
 |-----|--------------|
-| 0xSearchstr bot | `12ad55ad1fdb918f5314c9e9a5cd135be9b746e6eee15fd871df131a5677d199` |
-| 0xPresearchstr bot | `e34726ccb624f4bb6aebabdfd9a41f5e160ca97ba2ea13fad8f8ff29a7f84bca` |
+| 0xSearchstr bot (retired) | `12ad55ad1fdb918f5314c9e9a5cd135be9b746e6eee15fd871df131a5677d199` |
+| 0xPresearchstr legacy cache signer (retired) | `be7cad9a8e47ab0adfc877a008aea17692c08c49c1a5a6d87ee79ca4370c4289` |
+| 0xPresearchstr first signer (retired) | `e34726ccb624f4bb6aebabdfd9a41f5e160ca97ba2ea13fad8f8ff29a7f84bca` |
+
+0xSearchstr no longer publishes kind 30078 cache events — its legacy signing service
+is retired and the code removed. The pubkeys stay in the trust list so historical
+cache entries they signed remain readable until they age out (24h staleness window).
+All new indexing is SIP-01 document observations (kind 39697), signed by per-device
+identities — no central key, no service, no trust list.
 
 Running a fork with your own auto-indexing signer? Add your pubkey to
 `INDEXER_PUBKEYS` in `src/lib/searchIndex.ts` and your searches feed the same index.
 
 ---
 
-## Search Cache (kind 30078) — LEGACY
-
-> **Deprecated for new writes.** Kept for backward-compatible reads. New
-> document indexing uses kind 39697 (see docs/SEARCH_INDEX_PROTOCOL.md).
+## Search Cache (kind 30078) — legacy, frozen, read-only here
 
 0xSearchstr uses **kind 30078** (NIP-78 Application-specific Data) to cache search results on Nostr.
 
+> **Migration note (SIP-01):** new document indexing goes to **kind 39697** (see
+> [docs/SIP-01.md](docs/SIP-01.md)). This legacy query cache
+> is frozen — it will not gain new fields — and 0xSearchstr no longer publishes it
+> (its signing service is retired). It remains read so older clients keep their warm
+> cache; 0xSearchstr may still write it. Readers SHOULD merge both, by normalized URL.
+
 ### Purpose
 
-Every time a user searches and gets results from external providers (SearXNG, DuckDuckGo, Wikipedia, Hacker News, etc.), the results are published to Nostr as an addressable event. Subsequent searches for the same query read from this cache first — instant results, no external API call.
+Historically, every time a user searched and got results from external providers (SearXNG, DuckDuckGo, Wikipedia, Hacker News, etc.), the results were published to Nostr as an addressable event. Subsequent searches for the same query read from this cache first — instant results, no external API call.
 
 The cache is **community-driven**: every user's search grows the index. The more people use any compatible client, the smarter every client gets.
 
@@ -72,16 +115,6 @@ The cache is **community-driven**: every user's search grows the index. The more
 - Readers always filter by `authors: INDEXER_PUBKEYS` to prevent cache poisoning.
 - Events are addressable per indexer — each app's bot holds one cache slot per query; readers take the most recent valid event from any trusted indexer.
 - Cache expires after **24 hours** (client-side staleness check).
-- Nostr-native results (`source: nostr`, community submissions, keyword stakes) are never re-cached — they're already on relays, and caching would strip their event context.
-
-### Signing (historical)
-
-Cache events were signed by per-app **indexer bot keys** — first via a server-side
-autosigner (Cloudflare Worker), with an embedded-key fallback. Both write paths have
-since been removed in favor of the SIP-01 document index (kind 39697, signed by
-per-device indexing identities). **This cache is frozen:** the schema above is kept
-only so readers can keep consuming historical events. New document indexing MUST
-use kind 39697.
 
 ### Content Schema (SearchResult)
 
@@ -117,7 +150,7 @@ This means "Bitcoin mining" and "bitcoin  mining!" map to the same cache entry.
 
 ## Community Index Submissions (kind 30078)
 
-The index is not just a bot cache — any Nostr user can curate it. Community submissions are user-signed **kind 30078** events describing a single link. Concept inspired by [Nostra Search](https://github.com/nostrasearch/nostrasearch.github.io) (GPL-3.0), with an improved schema (unique d-tag per URL instead of one shared d-tag per author).
+The index is not just a bot cache — any Nostr user can curate it. Community submissions are user-signed **kind 30078** events describing a single link. The community-curation idea was adopted after discovering [Nostra Search](https://github.com/nostrasearch/nostrasearch.github.io) (GPL-3.0) — credit to them for the idea; this is an independent implementation with an improved schema (unique d-tag per URL instead of one shared d-tag per author).
 
 ### Event Structure
 
@@ -152,6 +185,104 @@ Relays can't full-text search tags, so readers fetch recent events with `{ kinds
 
 ---
 
+## Trending Term Signals (kind 30078) — k-anonymity
+
+"Trending searches" without a public record of anyone's plaintext query. The legacy
+cache carried plaintext queries; this schema replaces it for trending purposes with a
+one-way-hash + threshold-reveal design.
+
+### Signal event (hashed, one per device per term)
+
+```json
+{
+  "kind": 30078,
+  "pubkey": "<per-device indexing identity>",
+  "content": "",
+  "tags": [
+    ["d", "0xsearchstr:term:<sha256-hex(normalized-query)>"],
+    ["t", "0xsearchstr-term"],
+    ["alt", "Hashed search-term signal (k-anonymity trending — no plaintext)"]
+  ]
+}
+```
+
+- **No plaintext anywhere** — a reader sees only that some pseudonymous device hashed
+  this term. Addressable per device+term, so re-searching replaces the device's own
+  signal and counting distinct pubkeys ≈ counting distinct searchers.
+- Signed by the per-device indexing identity, never the user's personal key.
+- Only plain-text queries are signaled — NIP-19 identifiers, NIP-05 addresses, URLs,
+  and math expressions never leave the device even as a hash.
+
+### Reveal event (only after the threshold)
+
+A term stays hashed until at least **3 distinct devices** have signaled the same hash
+(`TRENDING_THRESHOLD = 3`). The device whose search crosses the threshold knows the
+plaintext (its user just typed it) and publishes:
+
+```json
+{
+  "kind": 30078,
+  "pubkey": "<the crossing device's indexing identity>",
+  "content": "",
+  "tags": [
+    ["d", "0xsearchstr:term-reveal:<same hash>"],
+    ["t", "0xsearchstr-term-reveal"],
+    ["term", "<plaintext query>"],
+    ["alt", "Public trending term (searched by 3+ independent devices): <query>"]
+  ]
+}
+```
+
+- **Self-verifying**: readers re-hash the normalized plaintext and compare it to the
+  d-tag hash before displaying; fake reveals (wrong plaintext attached to a hash) fail
+  verification and are dropped.
+- **Below the threshold a term exists on relays only as a hash.** Rare or confidential
+  queries never appear in plaintext — not in events, not in the trending UI.
+- Readers fetch both families in one filter:
+  `{ "kinds": [30078], "#t": ["0xsearchstr-term", "0xsearchstr-term-reveal"] }`.
+
+---
+
+## Keyword Stakes (kind 30078)
+
+Presearch-style keyword staking, Nostr-native. Instead of staking PRE tokens, a user stakes
+their **identity**: an addressable event binding a normalized keyword to a URL. When a
+search query exactly matches a staked keyword, the stake renders as the top
+"Community Stake" placement.
+
+### Event Structure
+
+```json
+{
+  "kind": 30078,
+  "pubkey": "<staker's pubkey>",
+  "content": "<pitch (shown as the search snippet), max 280 chars>",
+  "tags": [
+    ["d", "0xsearchstr:stake:<normalized-keyword>"],
+    ["t", "0xsearchstr-stake"],
+    ["keyword", "<original keyword text>"],
+    ["title", "<display title>"],
+    ["url", "<target url>"],
+    ["alt", "Keyword stake on \"<keyword>\": <title>"]
+  ]
+}
+```
+
+### Rules
+
+- **Any author may stake** — public UGC, readers do NOT filter by author. Clients MUST validate structure (`d`, `title`, `url` tags required) and apply the same URL allowlist as community submissions.
+- **One stake per keyword per pubkey**: the d-tag is `0xsearchstr:stake:<normalized-keyword>`, so re-staking the same keyword atomically replaces the staker's previous entry.
+- **Exact-match placement**: stakes only surface when the normalized query equals the normalized keyword. No fuzzy matching — placement is predictable and relay queries stay cheap (a single `#d` filter).
+- **Competition**: when multiple pubkeys stake the same keyword, clients rank by recency (newest first) and show at most 3. The schema intentionally leaves room for **zap-weighted ranking** (kind 9735 receipts against the stake event) without a breaking change.
+
+### Query
+
+```json
+{ "kinds": [30078], "#d": ["0xsearchstr:stake:<normalized-query>"], "limit": 25 }
+```
+
+---
+
 ## Nostra Search Interop (read-only)
 
 For ecosystem compatibility, 0xSearchstr also reads **Nostra Search** index events:
@@ -160,3 +291,68 @@ For ecosystem compatibility, 0xSearchstr also reads **Nostra Search** index even
 - Plaintext events are parsed from `title`/`url`/`subject`/`magnet`/`r` tags.
 - `NOSTRA_ENC_V1:` payloads are AES-256-GCM obfuscated JSON. The key is SHA-256 of a **published constant** (`NOSTRA_CENSORSHIP_RESISTANT_SEARCH_KEY_V1`) — it exists to evade relay-level content filtering, not to restrict read access. Format: `NOSTRA_ENC_V1:<base64-iv>:<base64-ciphertext>`, with `RAW` in the iv slot indicating base64-encoded plaintext JSON.
 - Nostra entries are rendered with provider attribution `nostra-index` and rank slightly below native 0xsearchstr-protocol submissions.
+
+---
+
+## Moderation Labels (kind 1985, NIP-32)
+
+Team-signed result filtering. Team members (owner + role-listed admins/moderators)
+publish NIP-32 label events marking results as hidden; **every client** filters its
+own result lists against them. The author filter is the trust boundary — anyone can
+write a label, only team signatures count.
+
+```json
+{
+  "kind": 1985,
+  "pubkey": "<owner/admin/moderator pubkey>",
+  "content": "",
+  "tags": [
+    ["L", "0xsearchstr.moderation"],
+    ["l", "hidden", "0xsearchstr.moderation"],
+    ["u", "<sip-01-normalized-url>"],
+    ["e", "<event-id>"]
+  ]
+}
+```
+
+- Targets: `u` for web results (SIP-01-normalized so all URL variants collapse),
+  `e` for Nostr events. At least one target is required.
+- Un-hiding = NIP-09 deletion (kind 5 with an `e` tag referencing the label event).
+- Clients resolve the trusted team set live from the owner-signed role lists
+  (below), then filter out results matching any team-signed `hidden` label.
+
+## Abuse Reports (kind 1984, NIP-56)
+
+Filed from the Policy page or any result card's flag. Self-labeled under the
+`0xsearchstr.abuse` namespace so the team console can find them without reading
+every kind 1984 on the network:
+
+```json
+{
+  "kind": 1984,
+  "pubkey": "<reporter — the user's own key, or the device indexing identity when logged out>",
+  "content": "<free-text detail>",
+  "tags": [
+    ["L", "0xsearchstr.abuse"],
+    ["l", "<report-type>", "0xsearchstr.abuse"],
+    ["u", "<normalized-url>"] or ["e", "<event-id>"]
+  ]
+}
+```
+
+Reports land in the `/admin` inbox for one-click moderation (a report → a NIP-32
+`hidden` label).
+
+## Team Role Lists (kind 30078, owner-signed)
+
+The team console's access control. Two addressable events, signed by the owner key
+(`OWNER_PUBKEY` in `src/lib/moderation.ts`), content = JSON array of hex pubkeys:
+
+| d tag | Meaning |
+|---|---|
+| `0xsearchstr:admin-roles` | admin role list |
+| `0xsearchstr:mod-roles` | moderator role list |
+
+Both carry `["t", "0xsearchstr-roles"]` for discovery. Readers MUST filter by
+`authors: [OWNER_PUBKEY]` — the d-tag alone is not a trust boundary. Role changes
+are just replacements of the addressable event.
