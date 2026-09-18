@@ -2,7 +2,7 @@
 
 **Decentralized search aggregator.** Nostr first, web when needed. No backend required.
 
-**Live:** [https://0xSearchstr.shakespeare.wtf](https://0xSearchstr.shakespeare.wtf)
+**Live:** [https://0xSearchstr.shakespeare.wtf](https://0xSearchstr.shakespeare.wtf) · **nsite mirror:** [https://0xsearchstr.shakespeare.to](https://0xsearchstr.shakespeare.to)
 
 **Nostr:** `npub1z2k4ttglmwgc75c5e856tngnt05mw3hxams4lkr3muf354nh6xvskk2ew6`
 
