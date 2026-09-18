@@ -10,17 +10,15 @@
  *   1. USER-PROVIDED key — the user's own provider/endpoint/model, stored
  *      in this browser's localStorage only, sent nowhere except the chosen
  *      provider's request path. Removing it drops to the next tier.
- *   2. ENGINE-PROVIDED AI — the operator's key, held SERVER-SIDE by the
- *      /api/ai proxy (see worker.ts). The browser calls the same-origin
+ *   2. KEYLESS provider — e.g. a local Ollama; no key by design.
+ *   3. ENGINE-PROVIDED AI — the operator's key, held SERVER-SIDE by an
+ *      0xSigner-class proxy at /api/ai. The browser calls the same-origin
  *      proxy with NO key; the key is never in the bundle, localStorage,
- *      or any API response. Available only when the operator deployed the
- *      worker AND configured it (status comes from GET /api/ai/status).
- *   3. BUILT-IN FALLBACK — a shared, rate-limited PPQ key with a locked
- *      model, so AI answers work out of the box on any deployment
- *      (including static hosting with no worker). The key is public by
- *      design — it ships in the bundle and must stay rate-limited; the
- *      engine tier exists for operators who want a private key.
- *   4. AI UNAVAILABLE — only if the built-in key is removed (forks).
+ *      or any API response. Available only when the operator deployed and
+ *      configured it (status comes from GET /api/ai/status). Inert on this
+ *      workerless static deployment.
+ *   4. AI UNAVAILABLE — otherwise. There is NO built-in key: provider
+ *      credentials never ship in the client bundle (security standard).
  */
 
 import { getAIProvider } from '@/lib/ai/registry';
@@ -28,17 +26,8 @@ import type { EngineAIStatus } from '@/lib/ai/engineProxy';
 
 export type { EngineAIStatus } from '@/lib/ai/engineProxy';
 
-/** Same-origin base of the engine-AI proxy (served by worker.ts). */
+/** Same-origin base of the engine-AI proxy (0xSigner-class server proxy). */
 export const ENGINE_AI_BASE = '/api/ai';
-
-/** Built-in free tier — shared, rate-limited PPQ key. Provider + model are
- *  locked on this tier. PUBLIC BY DESIGN (ships in the bundle): it exists so
- *  AI works with zero setup; abuse is bounded by the key's own rate limits.
- *  Forks: empty the key to disable the tier (falls through to 'unavailable'). */
-export const COMMUNITY_AI_PROVIDER_ID = 'ppq';
-export const COMMUNITY_AI_ENDPOINT = 'https://api.ppq.ai/v1';
-export const COMMUNITY_AI_KEY = 'sk-VPVVNlf79DvGjUfjjrHeFT';
-export const COMMUNITY_AI_MODEL = 'qwen/qwen-2.5-7b-instruct';
 
 const LS_KEY = '0xsearchstr:ai-config';
 
@@ -78,7 +67,7 @@ export interface ResolvedAIConfig {
   apiKey: string;
   model: string;
   /** Which tier answered: user's own key → engine proxy → built-in → none. */
-  tier: 'user' | 'engine' | 'keyless' | 'community' | 'unavailable';
+  tier: 'user' | 'engine' | 'keyless' | 'unavailable';
   /** Engine-tier display info (provider label + model), when tier='engine'. */
   engine?: { providerName?: string; model?: string };
 }
@@ -129,16 +118,9 @@ export function resolveAIConfig(cfg: AIConfig, engine?: EngineAIStatus | null): 
     };
   }
 
-  if (COMMUNITY_AI_KEY) {
-    return {
-      providerId: COMMUNITY_AI_PROVIDER_ID,
-      endpoint: COMMUNITY_AI_ENDPOINT,
-      apiKey: COMMUNITY_AI_KEY,
-      model: COMMUNITY_AI_MODEL, // locked on this tier — user's model choice ignored
-      tier: 'community',
-    };
-  }
-
+  // No built-in tier: provider credentials never ship in the client bundle,
+  // and the code never silently falls back to one (security standard §13/§16).
+  // Operators who want a shared tier deploy the engine proxy (0xSigner-class).
   return {
     providerId: cfg.providerId,
     endpoint: cfg.endpoint,

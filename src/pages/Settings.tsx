@@ -36,10 +36,11 @@ import { ALL_SOURCE_TABS, DEFAULT_TAB_CONFIG } from '@/components/SourceTabs';
 import { useAppContext } from '@/hooks/useAppContext';
 import { useSearxngInstances } from '@/hooks/useSearxngInstances';
 import { useSearchRelayPool, useIndexRelayPool, useGitRelayPool, useWikiRelayPool } from '@/hooks/useSearchRelayPool';
+import { useRelayDiscovery } from '@/hooks/useRelayDiscovery';
 import { getBraveApiKey, setBraveApiKey } from '@/lib/providers/brave';
 import { ALL_PROVIDERS } from '@/lib/providers/registry';
 import { AI_PROVIDERS, getAIProvider, PPQ_INVITE_URL } from '@/lib/ai/registry';
-import { COMMUNITY_AI_MODEL, getAIConfig, hasOwnAIKey, resolveAIConfig, setAIConfig, type AIConfig } from '@/lib/aiConfig';
+import { getAIConfig, hasOwnAIKey, resolveAIConfig, setAIConfig, type AIConfig } from '@/lib/aiConfig';
 import { useEngineAIStatus } from '@/hooks/useEngineAIStatus';
 import type { AIModel } from '@/lib/ai/types';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -711,11 +712,10 @@ function AISection() {
   /** Keyless providers (Ollama) run their own config even without a key. */
   const keylessProvider = provider?.requiresKey === false;
   const { status: engineStatus } = useEngineAIStatus();
-  /** Active tier per the precedence chain: user → engine → built-in → none. */
+  /** Active tier per the precedence chain: user → keyless → engine → none. */
   const tier = resolveAIConfig(cfg, engineStatus).tier;
   const onEngine = tier === 'engine';
-  const onCommunity = tier === 'community';
-  const locked = !ownKey && !keylessProvider; // engine/built-in tier or unavailable
+  const locked = !ownKey && !keylessProvider; // engine tier or unavailable
   const ready = cfg.enabled && tier !== 'unavailable';
 
   const save = (patch: Partial<AIConfig>) => {
@@ -814,38 +814,7 @@ function AISection() {
             </Card>
           )}
 
-          {/* Built-in free tier — the zero-setup fallback (locked model) */}
-          {onCommunity && (
-            <Card className="mb-4 border-primary/25 bg-primary/[0.04]">
-              <CardContent className="py-4 flex items-start gap-4">
-                <div className="flex items-center justify-center w-9 h-9 rounded-lg shrink-0 border bg-primary/10 border-primary/30 text-primary">
-                  <Lock className="w-4 h-4" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-sm font-medium">Free built-in tier</span>
-                    <Badge variant="outline" className="text-[10px] border-green-500/30 text-green-600 dark:text-green-500">
-                      Active
-                    </Badge>
-                  </div>
-                  <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
-                    Answers run on the built-in shared key — free for everyone, rate-limited.
-                    Provider and model are locked on this tier:
-                  </p>
-                  <div className="mt-2 flex items-center gap-2 flex-wrap">
-                    <Badge variant="secondary" className="text-[10px] font-mono">PPQ.ai</Badge>
-                    <Badge variant="secondary" className="text-[10px] font-mono">{COMMUNITY_AI_MODEL}</Badge>
-                  </div>
-                  <p className="text-[11px] text-muted-foreground/70 mt-2 leading-relaxed">
-                    If this deployment's operator configures engine AI it takes over this tier;
-                    pasting your own key below overrides everything.
-                  </p>
-                </div>
-              </CardContent>
-            </Card>
-          )}
-
-          {/* No engine, no built-in, no user key (forks without the key) */}
+          {/* Engine unavailable and no user key — nothing to run on */}
           {tier === 'unavailable' && (
             <Card className="mb-4 border-dashed border-border/60">
               <CardContent className="py-4 flex items-start gap-4">
@@ -882,12 +851,10 @@ function AISection() {
                 />
                 <p className="text-[11px] text-muted-foreground/70">
                   {ownKey
-                    ? 'Using your own AI provider — engine/built-in tiers are paused.'
+                    ? 'Using your own AI provider — the engine tier is paused.'
                     : onEngine
                       ? 'Empty = engine-provided AI. Paste a key to use your own provider instead.'
-                      : onCommunity
-                        ? 'Empty = free built-in tier. Paste a key to unlock provider + model choice.'
-                        : 'Paste a key to activate AI answers.'}
+                      : 'Paste a key to activate AI answers.'}
                   {cfg.providerId === 'ppq' && !ownKey && (
                     <>
                       {' '}No key yet?{' '}
@@ -994,16 +961,14 @@ function AISection() {
                 <p className="text-[11px] text-green-600 dark:text-green-500">
                   {onEngine
                     ? `Active — using engine-provided AI${engineStatus?.model ? ` (${engineStatus.model})` : ''}.`
-                    : onCommunity
-                      ? `Active on the built-in free tier (${COMMUNITY_AI_MODEL}) — shared and rate-limited.`
-                      : keylessProvider && !ownKey
-                        ? 'Active — running against your keyless provider.'
-                        : 'Active on your own key — your next search will include an AI-synthesized answer.'}
+                    : keylessProvider && !ownKey
+                      ? 'Active — running against your keyless provider.'
+                      : 'Active on your own key — your next search will include an AI-synthesized answer.'}
                 </p>
               )}
               {cfg.enabled && tier === 'unavailable' && (
                 <p className="text-[11px] text-amber-600 dark:text-amber-500">
-                  AI answers won't run — no engine AI, no built-in key, and no key of your own yet.
+                  AI answers won't run — no engine AI on this deployment and no key of your own yet.
                 </p>
               )}
             </CardContent>
@@ -1045,10 +1010,14 @@ function RelayPoolSection({ title, description, addLabel, kind }: RelayPoolSecti
   const indexPool = useIndexRelayPool();
   const gitPool = useGitRelayPool();
   const wikiPool = useWikiRelayPool();
-  const { pool, testing, testRelays, addRelay, removeRelay, restoreDefaults, hiddenCount } =
+  const { pool, testing, testRelays, addRelay, removeRelay, restoreDefaults, reload, hiddenCount } =
     kind === 'search' ? searchPool : kind === 'index' ? indexPool : kind === 'git' ? gitPool : wikiPool;
   const { toast } = useToast();
   const [newUrl, setNewUrl] = useState('');
+  // Auto-discovery only applies to the NIP-50 search pool and the SIP-01
+  // index pool — git/wiki pools stay fully manual.
+  const supportsDiscovery = kind === 'search' || kind === 'index';
+  const discovery = useRelayDiscovery();
 
   const handleAdd = () => {
     if (!newUrl.trim()) return;
@@ -1096,6 +1065,69 @@ function RelayPoolSection({ title, description, addLabel, kind }: RelayPoolSecti
         </div>
       </div>
       <p className="text-xs text-muted-foreground mb-4">{description}</p>
+
+      {/* Relay auto-discovery (search + index pools only) */}
+      {supportsDiscovery && (
+        <Card className={cn('mb-4 transition-colors', discovery.enabled ? 'border-primary/30 bg-primary/5' : 'border-border/60')}>
+          <CardContent className="py-4 flex items-start gap-4">
+            <div className={cn(
+              'flex items-center justify-center w-9 h-9 rounded-lg shrink-0 border',
+              discovery.enabled ? 'bg-primary/10 border-primary/30 text-primary' : 'bg-muted text-muted-foreground border-border',
+            )}>
+              <Wifi className="w-4 h-4" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-sm font-medium">Auto-discover relays</span>
+                <div className="flex items-center gap-2 shrink-0">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      void discovery.refresh().then((relays) => {
+                        reload();
+                        toast({
+                          title: 'Relay discovery refreshed',
+                          description: `${relays.length} relay${relays.length !== 1 ? 's' : ''} verified via their NIP-11 documents.`,
+                        });
+                      });
+                    }}
+                    disabled={discovery.refreshing || !discovery.enabled}
+                    title={discovery.enabled ? 'Re-run discovery now' : 'Enable discovery first'}
+                  >
+                    <RefreshCw className={cn('w-3.5 h-3.5 mr-1.5', discovery.refreshing && 'animate-spin')} />
+                    Refresh
+                  </Button>
+                  <Switch
+                    checked={discovery.enabled}
+                    onCheckedChange={(checked) => {
+                      void discovery.setDiscovery(checked).then(reload);
+                      if (!checked) reload();
+                      toast({
+                        title: checked ? 'Relay discovery enabled' : 'Relay discovery disabled',
+                        description: checked
+                          ? 'Relays that advertise NIP-50 (and the SIP-01 uncaged_index block) join the pool after NIP-11 verification.'
+                          : 'Only the default and your custom relays are used.',
+                      });
+                    }}
+                    aria-label="Toggle relay auto-discovery"
+                  />
+                </div>
+              </div>
+              <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
+                Find SIP-01/NIP-50 relays from NIP-66 announcements, verified against their NIP-11
+                documents before joining the pool.
+                {discovery.discoveredAt && (
+                  <span className="block mt-1 text-muted-foreground/70">
+                    Last verified: {new Date(discovery.discoveredAt).toLocaleString()} ·{' '}
+                    {discovery.searchCount} NIP-50 · {discovery.indexCount} SIP-01
+                  </span>
+                )}
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Add custom */}
       <Card className="mb-4 border-primary/20">

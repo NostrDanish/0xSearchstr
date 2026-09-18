@@ -10,15 +10,12 @@
 import { describe, it, expect } from 'vitest';
 
 import {
-  resolveAIConfig,
-  engineAIAvailable,
-  hasOwnAIKey,
   DEFAULT_AI_CONFIG,
   ENGINE_AI_BASE,
-  COMMUNITY_AI_KEY,
-  COMMUNITY_AI_ENDPOINT,
-  COMMUNITY_AI_MODEL,
-  type EngineAIStatus,
+  getAIConfig,
+  hasOwnAIKey,
+  resolveAIConfig,
+  setAIConfig,
 } from './aiConfig';
 
 const ENGINE_ON: EngineAIStatus = {
@@ -33,20 +30,19 @@ const ENGINE_ON: EngineAIStatus = {
 const ENGINE_OFF: EngineAIStatus = { configured: false, enabled: false };
 
 describe('resolveAIConfig precedence', () => {
-  it('1. no engine + no user key → built-in free tier (locked provider+model)', () => {
+  it('1. no engine + no user key → UNAVAILABLE (no built-in key ships in the bundle)', () => {
+    // Security standard: provider credentials never ship client-side, and the
+    // code must not silently fall back to a built-in key (there is none).
     const r = resolveAIConfig({ ...DEFAULT_AI_CONFIG, apiKey: '' }, ENGINE_OFF);
-    expect(r.tier).toBe('community');
-    expect(r.apiKey).toBe(COMMUNITY_AI_KEY); // public by design (rate-limited)
-    expect(r.model).toBe(COMMUNITY_AI_MODEL); // locked — user's 'auto' ignored
-    expect(r.endpoint).toBe(COMMUNITY_AI_ENDPOINT);
+    expect(r.tier).toBe('unavailable');
   });
 
-  it('1b. static deploy (no status endpoint) still gets the built-in tier', () => {
+  it('1b. static deploy (no status endpoint) is likewise unavailable without a user key', () => {
     const r = resolveAIConfig({ ...DEFAULT_AI_CONFIG, apiKey: '' }, null);
-    expect(r.tier).toBe('community');
+    expect(r.tier).toBe('unavailable');
   });
 
-  it('2. engine configured only → engine tier beats the built-in tier', () => {
+  it('2. engine configured only → engine tier (0xSigner-class proxy, key server-side)', () => {
     const r = resolveAIConfig({ ...DEFAULT_AI_CONFIG, apiKey: '' }, ENGINE_ON);
     expect(r.tier).toBe('engine');
     expect(r.endpoint).toBe(ENGINE_AI_BASE); // same-origin /api/ai
@@ -64,18 +60,18 @@ describe('resolveAIConfig precedence', () => {
     expect(r.providerId).toBe('openrouter');
   });
 
-  it('4. all configured → user key takes precedence over engine + built-in', () => {
+  it('4. all configured → user key takes precedence over engine', () => {
     const r = resolveAIConfig({ ...DEFAULT_AI_CONFIG, apiKey: 'sk-user-own-key' }, ENGINE_ON);
     expect(r.tier).toBe('user');
     expect(r.apiKey).toBe('sk-user-own-key');
   });
 
-  it('7. engine disabled by operator → falls through to the built-in tier', () => {
+  it('7. engine disabled by operator → unavailable (no built-in fallback)', () => {
     const r = resolveAIConfig(
       { ...DEFAULT_AI_CONFIG, apiKey: '' },
       { ...ENGINE_ON, enabled: false },
     );
-    expect(r.tier).toBe('community');
+    expect(r.tier).toBe('unavailable');
   });
 
   it('keyless provider selection (Ollama) beats engine + built-in tiers', () => {

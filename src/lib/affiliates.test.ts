@@ -22,7 +22,7 @@ const AMAZON: AffiliateRule = { host: 'amazon.ca', mode: 'param', params: { tag:
 const EBAY: AffiliateRule = {
   host: 'ebay.com',
   mode: 'param',
-  params: { mkcid: '1', mkrid: '711-53200-19255-0', siteid: '123', campid: '456', customid: 'savedd' },
+  params: { mkcid: '1', mkrid: '711-53200-19255-0', siteid: '123', campid: '456', customid: 'myengine' },
 };
 const PPQ: AffiliateRule = { host: 'ppq.ai', mode: 'redirect', target: 'https://ppq.ai/invite/949880ca' };
 
@@ -44,7 +44,7 @@ describe('applyAffiliateRules', () => {
     expect(u.searchParams.get('mkrid')).toBe('711-53200-19255-0');
     expect(u.searchParams.get('siteid')).toBe('123');
     expect(u.searchParams.get('campid')).toBe('456');
-    expect(u.searchParams.get('customid')).toBe('savedd');
+    expect(u.searchParams.get('customid')).toBe('myengine');
     expect(u.pathname).toBe('/itm/123456789');
   });
 

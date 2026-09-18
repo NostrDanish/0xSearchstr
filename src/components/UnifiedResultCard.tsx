@@ -20,7 +20,10 @@ import { Badge } from '@/components/ui/badge';
 import { OnionWarningDialog } from '@/components/OnionWarningDialog';
 import { ReportDialog } from '@/components/ReportDialog';
 import { VoteButtons } from '@/components/VoteButtons';
-import { sanitizeUrl } from '@/lib/sanitizeUrl';
+import { sanitizeUrl, sanitizeResultUrl } from '@/lib/sanitizeUrl';
+import { useAffiliateRules } from '@/hooks/useAffiliates';
+import { applyAffiliateRules } from '@/lib/affiliates';
+import { trackAffiliateClick } from '@/hooks/useReferrals';
 import type { SearchResult } from '@/lib/providers/types';
 import { cn } from '@/lib/utils';
 
@@ -252,11 +255,18 @@ function ExternalResultCard({ result, className }: { result: SearchResult; class
   const style = SOURCE_STYLE[result.source] ?? SOURCE_STYLE.web;
   const [reportOpen, setReportOpen] = useState(false);
 
+  // Owner-managed affiliate tagging (e.g. merchant domains → ?tag=code).
+  // Applied BEFORE sanitization so the final href is always a clean URL.
+  const { rules: affiliateRules } = useAffiliateRules();
+
   // Nostr-native providers (wiki/git pools) link to internal /nip19 routes —
   // those navigate client-side via the router. Everything else opens in a
   // new tab. (A bare <a target="_blank"> would resolve "/naddr1…" against
   // the current origin and hard-load it in a new tab — broken UX.)
+  // External URLs are hostile data — sanitize before they become a href.
   const isInternal = result.url.startsWith('/');
+  const taggedUrl = applyAffiliateRules(result.url, affiliateRules);
+  const safeUrl = isInternal ? '' : sanitizeResultUrl(taggedUrl);
 
   const card = (
     <div className={cn(
@@ -325,15 +335,19 @@ function ExternalResultCard({ result, className }: { result: SearchResult; class
     <>
       {isInternal ? (
         <Link to={result.url} className={cn('block group', className)}>{card}</Link>
-      ) : (
+      ) : safeUrl ? (
         <a
-          href={result.url}
+          href={safeUrl}
           target="_blank"
           rel="noopener noreferrer"
           className={cn('block group', className)}
+          onClick={() => trackAffiliateClick(result.url, taggedUrl)}
         >
           {card}
         </a>
+      ) : (
+        // Unsafe scheme (javascript:, data:, …) — render without a link.
+        <div className={className}>{card}</div>
       )}
 
       <ReportDialog

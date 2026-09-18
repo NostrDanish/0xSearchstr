@@ -38,6 +38,9 @@ import {
   ROLES_T_TAG,
 } from '@/lib/moderation';
 
+/** The trust root, re-exported so control-plane modules import one place. */
+export { OWNER_PUBKEY } from '@/lib/moderation';
+
 /* ------------------------------------------------------------------ */
 /* Namespaces                                                          */
 /* ------------------------------------------------------------------ */

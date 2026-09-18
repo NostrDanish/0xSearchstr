@@ -1,6 +1,7 @@
 /**
- * Search Index Protocol (SIP-01) v1.1 — reference implementation.
- * Canonical spec: https://github.com/NostrDanish/SIP-01 (local copy: docs/SIP-01.md)
+ * Search Index Protocol (SIP-01) v1.2 — reference implementation.
+ * (v1.2 = NIP-reference audit only; the wire format is unchanged from v1.)
+ * Canonical spec: https://github.com/NostrDanish/SIP-01 (local copy: docs/)
  *
  * One addressable event (kind 39697) per indexed web document:
  *   d = "widx:" + sha256(normalized_url)[0:32]   ← URL identity
@@ -19,6 +20,7 @@
  */
 import type { NostrEvent } from '@nostrify/nostrify';
 
+import { APP_PROFILE } from '@/lib/appProfile';
 import type { SearchResult } from '@/lib/providers/types';
 
 /** Web Index Observation kind (addressable). Draft allocation — see spec §2. */
@@ -361,6 +363,8 @@ export function observationFromResult(result: SearchResult): IndexObservationInp
     image: result.thumbnail,
     tags: result.tags,
     published: result.timestamp,
-    source: '0xsearchstr-web/1',
+    // Attributed to this branded engine via the app profile (SIP-01 §6
+    // `source` tag) — one id per engine, not the shared stack.
+    source: APP_PROFILE.sip.indexerSource,
   };
 }

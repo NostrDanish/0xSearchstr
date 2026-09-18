@@ -92,8 +92,7 @@ export function useAIAnswer(query: string, results: SearchResult[], enabled: boo
     evidence.length >= 2 &&
     (resolved.tier === 'user'
       || resolved.tier === 'keyless'
-      || resolved.tier === 'engine'
-      || resolved.tier === 'community');
+      || resolved.tier === 'engine');
 
   const { data, isLoading, error } = useQuery<AIAnswer>({
     queryKey: ['ai-answer', query, resolved.providerId, resolved.model, resolved.tier, evidence.map((e) => e.url).join('|')],

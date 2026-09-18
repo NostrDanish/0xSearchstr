@@ -34,7 +34,7 @@ export const AFFILIATE_CLICK_KIND = 6079;
 export const REFERRAL_T_TAG = '0xsearchstr-referral';
 
 /** Invite Friends config (kind 30078, d-tag) — 0xSearchstr control-plane data,
- *  defined in src/lib/saveddProtocol.ts. Owner/admin-signed. */
+ *  defined in src/lib/appProtocol.ts. Owner/admin-signed. */
 export { APP_PROTOCOL } from '@/lib/appProtocol';
 
 const LS_REFERRER = '0xsearchstr:referrer';

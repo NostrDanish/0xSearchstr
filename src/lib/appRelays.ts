@@ -1,4 +1,5 @@
 import type { RelayMetadata } from '@/contexts/AppContext';
+import { getDiscoveredSearchRelays, getDiscoveredIndexRelays } from '@/lib/relayDiscovery';
 
 /**
  * App default relays. Used as the initial `relayMetadata` for new users and as
@@ -177,15 +178,21 @@ export function onionRelaysReachable(): boolean {
   return typeof location !== 'undefined' && location.hostname.endsWith('.onion');
 }
 
-/** Effective pool: defaults minus hidden, then customs (deduped). */
-function effectivePool(defaults: readonly string[], customKey: string, hiddenKey: string): string[] {
+/** Effective pool: defaults minus hidden, then NIP-11-verified discovered
+ *  relays (relayDiscovery.ts), then customs (deduped). */
+function effectivePool(
+  defaults: readonly string[],
+  customKey: string,
+  hiddenKey: string,
+  discovered: readonly string[] = [],
+): string[] {
   const hidden = new Set(readList(hiddenKey));
   const includeOnionDefaults = onionRelaysReachable();
   const seen = new Set<string>();
   const pool: string[] = [];
-  for (const url of [...defaults, ...readList(customKey)]) {
+  for (const url of [...defaults, ...discovered, ...readList(customKey)]) {
     if (hidden.has(url) || seen.has(url)) continue;
-    // Skip default onion relays on clearnet origins (see onionDefaultsReachable).
+    // Skip default onion relays on clearnet origins (see onionRelaysReachable).
     if (!includeOnionDefaults && defaults.includes(url) && url.includes('.onion')) continue;
     seen.add(url);
     pool.push(url);
@@ -241,10 +248,16 @@ export function restoreAllDefaultSearchRelays(): void {
 
 /**
  * The effective search relay pool: default NIP-50 relays (minus hidden),
- * then the user's custom relays (deduped).
+ * then NIP-11-verified discovered relays (relayDiscovery.ts — relays that
+ * verifiably advertise NIP-50), then the user's custom relays (deduped).
  */
 export function getSearchRelayUrls(): string[] {
-  return effectivePool(SEARCH_RELAYS, LS_CUSTOM_SEARCH_RELAYS, LS_HIDDEN_SEARCH_RELAYS);
+  return effectivePool(
+    SEARCH_RELAYS,
+    LS_CUSTOM_SEARCH_RELAYS,
+    LS_HIDDEN_SEARCH_RELAYS,
+    getDiscoveredSearchRelays(),
+  );
 }
 
 /* Index relay pool (SIP-01 reads + writes) */
@@ -294,12 +307,19 @@ export function restoreAllDefaultIndexRelays(): void {
 
 /**
  * The effective index relay pool: default SIP-01 index relays (minus hidden),
- * then the user's custom relays (deduped). Indexing writes AND reads
- * (SIP-01 observations, legacy cache, community submissions, keyword stakes)
- * all use this pool so writes land where reads happen.
+ * then NIP-11-verified SIP-01 relays discovered via relayDiscovery.ts (the
+ * `uncaged_index` block, spec §15), then the user's custom relays (deduped).
+ * Indexing writes AND reads (SIP-01 observations, legacy cache, community
+ * submissions, keyword stakes) all use this pool so writes land where reads
+ * happen.
  */
 export function getIndexRelayUrls(): string[] {
-  return effectivePool(INDEX_RELAYS, LS_CUSTOM_INDEX_RELAYS, LS_HIDDEN_INDEX_RELAYS);
+  return effectivePool(
+    INDEX_RELAYS,
+    LS_CUSTOM_INDEX_RELAYS,
+    LS_HIDDEN_INDEX_RELAYS,
+    getDiscoveredIndexRelays(),
+  );
 }
 
 /* ------------------------------------------------------------------ */
