@@ -103,6 +103,12 @@ function useRelayPool(store: PoolStore) {
     setPool(buildPool());
   }, [store, buildPool]);
 
+  /** Rebuild from storage — e.g. after relay discovery adds verified relays
+   *  to the effective pool, or the discovery toggle flips. */
+  const reload = useCallback(() => {
+    setPool(buildPool());
+  }, [buildPool]);
+
   /** Ping every relay with a limit-1 query and record latency/status. */
   const testRelays = useCallback(async () => {
     setTesting(true);
@@ -149,7 +155,7 @@ function useRelayPool(store: PoolStore) {
 
   const hiddenCount = store.getHidden().length;
 
-  return { pool, testing, testRelays, addRelay, removeRelay, restoreDefaults, hiddenCount };
+  return { pool, testing, testRelays, addRelay, removeRelay, restoreDefaults, reload, hiddenCount };
 }
 
 const SEARCH_POOL_STORE: PoolStore = {
